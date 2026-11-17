@@ -1,9 +1,11 @@
-// 【入力1】声を録音して、特徴（大きさ・高さなど）を数字にする。
+// 【入力1】声を録音して、特徴を数字にする。
 // 声は個人情報なので、ブラウザの中だけで使い、保存・送信しない。
+// 受け渡しの形は docs/interfaces.md の「4. 材料」。
 //
 // 書くもの:
-//   recordVoice(ms)      → { buffer: AudioBuffer, features: analyzeVoice の結果 }  声を ms ミリ秒録音する
-//   analyzeVoice(buffer) → { loudness, pitch, … }  声の特徴を数字にする（設計図に使うもの）
+//   recordVoice(ms = 5000) → { buffer: AudioBuffer, features: VoiceFeatures } | null
+//     許可されない・失敗したときは、例外を投げずに null を返す。返す前にマイクを止める
+//   analyzeVoice(buffer) → VoiceFeatures = { duration: 秒, loudness: 0〜1, pitchHz: 数値 | null }（項目は足してよい）
 //
 // 参考（録音）:
 //   const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -26,5 +28,5 @@ export async function recordVoice(ms = 5000) {
 
 export function analyzeVoice(buffer) {
   // TODO(入力1)
-  return {};
+  return { duration: 0, loudness: 0, pitchHz: null };
 }
