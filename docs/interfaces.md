@@ -30,9 +30,9 @@ UI（src/main.js）が順番に呼ぶ
 
 名前は、そのまま変数名・引数名に使う。
 
-- 声 `voice`：`voice.js` → `toBlueprint.js`（JS オブジェクト `{ buffer, features }` / `null`）
+- 声 `voice`：`voice.js` → `toBlueprint.js`（JS オブジェクト `{ buffer, rawBuffer, features }` / `null`）
 - 叩いた時刻 `tapTimesMs`：`main.js` → `tap.js`（数値の配列、ミリ秒）
-- リズム `taps`：`tap.js` → `toBlueprint.js`（JS オブジェクト `{ bpm, groove, count }` / `null`）
+- リズム `taps`：`tap.js` → `toBlueprint.js`（JS オブジェクト `{ bpm, groove, stability, count }` / `null`）
 - 10問の答え `quiz`：`main.js` → `toBlueprint.js`（JS オブジェクトの配列 `[{ value, responseMs }]` / `null`。点数は `toBlueprint.js` が `quiz.js` の `scoreQuiz` で出す）
 - 心拍 `heart`：`heart.js` → `toBlueprint.js`（JS オブジェクト `{ bpm }` / `null`）
 - 顔の音色 `face`：`face.js` → `toBlueprint.js`（JS オブジェクト `{ timbre }` / `null`）
@@ -104,10 +104,10 @@ Materials = {
   face:  Face | null,
 }
 
-Voice         = { buffer: AudioBuffer, features: VoiceFeatures }
-VoiceFeatures = { duration: 秒, loudness: 0〜1, pitchHz: number | null }  // 項目は足してよい
-Taps          = { bpm: 60〜160 の整数, groove: [秒, 秒, 秒, 秒]（各 ±0.05）, count: 叩いた回数 }
-QuizAnswer    = { value: 1〜7, responseMs: 質問を出してから答えるまでのミリ秒 }
+Voice         = { buffer: AudioBuffer（前後の無音を切った声）, rawBuffer: AudioBuffer（切る前の録音）, features: VoiceFeatures }
+VoiceFeatures = { duration: 秒, loudness: 0〜1, pitchHz: number | null, … }  // 項目は足してよい。今ある項目は src/input/voice.js の先頭に一覧
+Taps          = { bpm: 60〜160 の整数, groove: [秒, 秒, 秒, 秒]（各 ±0.05）, stability: 0〜1（叩くたびのバラつきの小ささ）, count: 叩いた回数 }
+QuizAnswer    = { value: 1〜5（選択肢は5つ。重みは quiz.js の CHOICE_WEIGHTS）, responseMs: 質問を出してから答えるまでのミリ秒 }
 Traits        = { extraversion, agreeableness, conscientiousness, neuroticism, openness }  // 各 0〜1
 Face          = { timbre: number[] }  // 1〜16個、各 0〜1、1番目は 1
 HeartConnection = { bpm: number | null（今の値。まだ届いていなければ null）, close(): void }

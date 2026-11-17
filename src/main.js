@@ -9,7 +9,7 @@
 //   const heartConnection = connectHeart(url); // 心拍（任意。null のこともある）
 //   const voice = await recordVoice(5000);    // 声（null のこともある）
 //   const taps = analyzeTaps(tapTimesMs);     // 叩いた時刻（performance.now()）の配列から
-//   const quiz = [{ value, responseMs }, …];  // 10問の答え（1〜7）と、質問を出してから答えるまでの時間
+//   const quiz = [{ value, responseMs }, …];  // 10問の答え（1〜5）と、質問を出してから答えるまでの時間
 //   const face = await captureFace();         // 顔（任意）
 //   const heart = heartConnection?.bpm != null ? { bpm: heartConnection.bpm } : null;
 //   const materials = { voice, taps, quiz, heart, face };
