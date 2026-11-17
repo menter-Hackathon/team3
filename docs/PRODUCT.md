@@ -80,9 +80,7 @@
 - 必要なもの: Node.js 24（`.nvmrc`）、Chrome
 - 初回: `npm install`
 - 起動: `npm run dev` → `http://localhost:5173`（画面と `/api` が両方動く）
-- 曲だけ試す: 最初の画面の「見本の設計図で曲だけつくる（開発用）」
-- AI を試す: `cp .dev.vars.example .dev.vars` してキーを入れる。なくても動く（曲名が「あなたの曲」になる）
-- 心拍を試す: `http://localhost:5173/?heart=wss://...`（中継の URL を渡す）
+- AI を使うとき: `cp .dev.vars.example .dev.vars` してキーを入れる
 - ビルド確認: `npm run build`
 - 公開（チームで相談してから）: `npm run build && npx wrangler deploy`（初回は `npx wrangler login`）
 - テスト: 自動テストはまだない。音・カメラ・マイクはブラウザで実際に鳴らして確かめる
@@ -107,5 +105,7 @@ worker/index.js         サーバー（Cloudflare Worker）: /api/title（AI で
 wrangler.jsonc          Cloudflare の設定
 ```
 
-- 各ファイルの先頭に【担当】と、やること（TODO）を書いてある
+- 各ファイルは中身が空。先頭に【担当】・書くもの（関数の入力と出力）・参考のコードを書いてある
+- 中身があるのは `src/blueprint.js`（設計図の形・既定値・見本）と `src/util.js` だけ
+- 前に入れていた仮の実装は、git のコミット `9cd3bd4` で見られる
 - Apple Watch・iPhone アプリは、作るときに `watch/` に Xcode のプロジェクトを置く予定

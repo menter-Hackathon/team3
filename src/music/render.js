@@ -1,13 +1,16 @@
 // 【曲2】楽譜 → 音声ファイル（WAV の Blob）。
-// Tone.Offline で、曲の長さを待たずに一気に書き出す。画面ではこの WAV を再生するので、
-// 聞いた曲と持ち帰る曲は同じものになる。
-import * as Tone from "tone";
-import { scheduleSong } from "./sound.js";
-import { audioBufferToWav } from "./wav.js";
+//
+// 書くもの:
+//   renderSong(score, assets) → WAV の Blob
+//
+// 参考（Tone.Offline は、曲の長さを待たずに一気に書き出す）:
+//   const rendered = await Tone.Offline(() => {
+//     scheduleSong(score, assets);           // sound.js
+//   }, score.duration, 2, 44100);            // 長さ（秒）・チャンネル数・サンプルレート
+//   return audioBufferToWav(rendered.get()); // wav.js
+//   画面ではこの WAV を <audio> で流すと、「聞いた曲」と「持ち帰る曲」が同じになる
 
 export async function renderSong(score, assets = {}) {
-  const rendered = await Tone.Offline(() => {
-    scheduleSong(score, assets);
-  }, score.duration, 2, 44100);
-  return audioBufferToWav(rendered.get());
+  // TODO(曲2)
+  return null;
 }
