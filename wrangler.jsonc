@@ -1,0 +1,11 @@
+// Cloudflare Workers の設定。
+// 画面は静的ファイルとして配信し、/api/* だけ worker/index.js が動く。
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "team3",
+  "main": "./worker/index.js",
+  "compatibility_date": "2026-11-01",
+  "assets": {
+    "run_worker_first": ["/api/*"]
+  }
+}
