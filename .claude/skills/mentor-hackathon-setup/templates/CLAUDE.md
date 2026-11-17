@@ -2,7 +2,7 @@
 
 チーム全員で共通の開発プロトコルです。Claude Code は以下のルールに**必ず**従ってください。
 
-- このファイルは `/mentor-hackathon-setup` スキルで生成されています。**正本はスキルのテンプレート**（`.claude/skills/mentor-hackathon-setup/templates/CLAUDE.md`）です。直接編集せず、テンプレートを直して PR でチームに共有し、各自スキルを再実行して同期してください。
+- このファイルは `/mentor-hackathon-setup` スキルで生成されています。**正本はスキルのテンプレート**（`.claude/skills/mentor-hackathon-setup/templates/CLAUDE.md`）です。直接編集せず、テンプレートを直してからスキルで直下の `CLAUDE.md` に同期し、両方を同じ PR でチームに共有してください。
 - プロダクト固有の情報（作品の内容・技術スタック・起動方法など）は `docs/PRODUCT.md` に書きます（このファイルの最後で読み込んでいます）。**作業前に `docs/PRODUCT.md` を確認すること。**
 - 個人の好みは `CLAUDE.local.md`（git 管理外）に書きます。このファイルと矛盾する場合は、このファイルが優先されます。
 
