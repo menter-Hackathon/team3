@@ -1,0 +1,5 @@
+# 手元で動かすときの秘密の値。cp .dev.vars.example .dev.vars して値を入れる（.dev.vars は git に入らない）。
+# 本番は npx wrangler secret put ANTHROPIC_API_KEY で Cloudflare に入れる。
+
+# Claude API のキー（曲名と解説に使う）。なくても曲は作れる（決まった曲名になる）。
+ANTHROPIC_API_KEY=your-api-key-here
