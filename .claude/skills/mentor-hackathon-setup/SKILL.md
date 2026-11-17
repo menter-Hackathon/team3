@@ -13,7 +13,7 @@ allowed-tools: [Bash, Read, Write, Edit]
 
 | ファイル | テンプレート | 種別 | 同期方法 |
 |----------|--------------|------|----------|
-| `CLAUDE.md` | `templates/CLAUDE.md` | チーム共通の開発プロトコル。最後に `@docs/PRODUCT.md` を読み込む（**コミットしない**。各自がこのスキルで生成） | テンプレートと完全一致させる |
+| `CLAUDE.md` | `templates/CLAUDE.md` | チーム共通の開発プロトコル。最後に `@docs/PRODUCT.md` を読み込む（コミットして共有する。clone すればそのまま読み込まれる） | テンプレートと完全一致させる |
 | `.claude/settings.json` | `templates/settings.json` | チーム共通（deny ルール＋フック登録） | テンプレートと完全一致させる |
 | `.claude/hooks/guard.py` | `templates/hooks/guard.py` | チーム共通（機密ファイル・main push・force push をブロック） | テンプレートと完全一致させる |
 | `CLAUDE.local.md.example` | `templates/CLAUDE.local.md.example` | 個人設定の雛形 | テンプレートと完全一致させる |
@@ -22,7 +22,7 @@ allowed-tools: [Bash, Read, Write, Edit]
 | `CLAUDE.local.md` | `templates/CLAUDE.local.md.example` | 個人設定（各自カスタマイズ・**コミットしない**） | 無いときだけ作成。既存は絶対に触らない |
 
 - **正本はテンプレート**（`${CLAUDE_SKILL_DIR}/templates/`）。チーム共通ルールを変えるときはテンプレートを編集し、このスキルを再実行してリポジトリ直下へ同期する。直下のファイルだけを直接編集しない。
-- `CLAUDE.md` は `.gitignore` 済みでリポジトリには置かない。チームで共有されるのはテンプレートなので、テンプレートが更新されたら（pull 後など）各自このスキルを再実行して手元の `CLAUDE.md` を更新する。
+- `CLAUDE.md` もコミットするので、clone すればそのまま読み込まれる。ルールを変えるときはテンプレートを直し、このスキルで直下へ同期して、両方を同じ PR に含める。
 - プロダクト固有の情報は `docs/PRODUCT.md` に書き、`CLAUDE.md` からは `@docs/PRODUCT.md` で読み込む。そのため `CLAUDE.md` は常にテンプレートと一致する。
 - 前提：フックの実行に `python3` が必要（macOS は標準で入っている）。
 
@@ -73,7 +73,7 @@ fi
 
 ### Step 3: ブランチの確認（ファイルを変更する前に必ず行う）
 
-Step 2 でチーム共通ファイル（`CLAUDE.md`・`CLAUDE.local.md` 以外）に `NEW` / `APPEND` / 同期する `DIFFERS` が 1 つでもある場合、**ファイルを変更する前に**ブランチを確認する。
+Step 2 でチーム共通ファイル（`CLAUDE.local.md` 以外）に `NEW` / `APPEND` / 同期する `DIFFERS` が 1 つでもある場合、**ファイルを変更する前に**ブランチを確認する。
 
 ```bash
 git -C "$ROOT" branch --show-current
@@ -81,7 +81,7 @@ git -C "$ROOT" branch --show-current
 
 - `main` の場合：`git -C "$ROOT" switch -c change/team-protocol-setup` でブランチを作る。
 - それ以外のブランチの場合：関係ない作業ブランチに混ざらないよう、「このブランチに含める」か「main から新しいブランチを切る」かをユーザーに確認する。
-- 変更が `CLAUDE.md`・`CLAUDE.local.md` の作成だけなら（clone 直後のメンバーは通常これ）、ブランチ操作は不要。
+- 変更が `CLAUDE.local.md` の作成だけなら（clone 直後のメンバーは通常これ）、ブランチ操作は不要。
 
 ### Step 4: テンプレートからファイルを作成・同期
 
@@ -121,9 +121,9 @@ for pair in "CLAUDE.md:CLAUDE.md" "CLAUDE.local.md.example:CLAUDE.local.md.examp
   cmp -s "$T/${pair##*:}" "$ROOT/${pair%%:*}" && echo "SAME ${pair%%:*}" || echo "DRIFT ${pair%%:*}"
 done
 
-# 2) ignore 設定（CLAUDE.md と CLAUDE.local.md は除外、テンプレートと CLAUDE.local.md.example は追跡対象）
-git -C "$ROOT" check-ignore -q CLAUDE.md && git -C "$ROOT" check-ignore -q CLAUDE.local.md && echo "ignored OK"
-git -C "$ROOT" check-ignore -q CLAUDE.local.md.example || git -C "$ROOT" check-ignore -q .claude/skills/mentor-hackathon-setup/templates/CLAUDE.md || echo "tracked OK"
+# 2) ignore 設定（CLAUDE.local.md は除外、CLAUDE.md と CLAUDE.local.md.example は追跡対象）
+git -C "$ROOT" check-ignore -q CLAUDE.local.md && echo "ignored OK"
+git -C "$ROOT" check-ignore -q CLAUDE.md || git -C "$ROOT" check-ignore -q CLAUDE.local.md.example || echo "tracked OK"
 
 # 3) フックの動作（機密ファイル・main push・force push のブロック／通常操作の許可を自己テスト）
 python3 "$ROOT/.claude/hooks/guard.py" --self-test
@@ -134,11 +134,11 @@ git -C "$ROOT" status --short
 
 ### Step 7: コミットと PR（チーム共通ファイルに変更があった場合のみ）
 
-1. 変更したチーム共通ファイルのみを `git add` してコミットする（`CLAUDE.md`・`CLAUDE.local.md` は含めない）。
+1. 変更したチーム共通ファイルのみを `git add` してコミットする（`CLAUDE.local.md` は含めない）。
 2. CLAUDE.md の「4. push 前チェック」を行う。
 3. push と `gh pr create --base main` は**ユーザーに確認してから**実行する。
 
-`CLAUDE.md`・`CLAUDE.local.md` の作成だけだった場合は、コミット不要。
+`CLAUDE.local.md` の作成だけだった場合は、コミット不要。
 
 ### Step 8: 結果報告
 
