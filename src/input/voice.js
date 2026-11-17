@@ -1,32 +1,30 @@
-// 【入力1】声を録音する。声は個人情報なので、ブラウザの中だけで使い、保存・送信しない。
-import * as Tone from "tone";
+// 【入力1】声を録音して、特徴（大きさ・高さなど）を数字にする。
+// 声は個人情報なので、ブラウザの中だけで使い、保存・送信しない。
+//
+// 書くもの:
+//   recordVoice(ms)      → { buffer: AudioBuffer, features: analyzeVoice の結果 }  声を ms ミリ秒録音する
+//   analyzeVoice(buffer) → { loudness, pitch, … }  声の特徴を数字にする（設計図に使うもの）
+//
+// 参考（録音）:
+//   const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+//   const recorder = new MediaRecorder(stream);
+//   const chunks = [];
+//   recorder.addEventListener("dataavailable", (e) => chunks.push(e.data));
+//   recorder.start();  // … ms 待ってから recorder.stop()、"stop" イベントを待つ
+//   const blob = new Blob(chunks, { type: recorder.mimeType });
+//   const buffer = await Tone.getContext().decodeAudioData(await blob.arrayBuffer()); // import * as Tone from "tone"
+//   stream.getTracks().forEach((track) => track.stop()); // 最後にマイクを止める
+//
+// 参考（特徴）:
+//   大きさ: buffer.getChannelData(0) の値の2乗の平均の平方根（RMS）
+//   高さ: 自己相関（autocorrelation）で基本周波数を推定する、など
 
-// ms ミリ秒録音して { buffer: AudioBuffer, features } を返す
 export async function recordVoice(ms = 5000) {
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  try {
-    const recorder = new MediaRecorder(stream);
-    const chunks = [];
-    recorder.addEventListener("dataavailable", (e) => chunks.push(e.data));
-    const stopped = new Promise((resolve) => recorder.addEventListener("stop", resolve));
-
-    recorder.start();
-    await new Promise((resolve) => setTimeout(resolve, ms));
-    recorder.stop();
-    await stopped;
-
-    const blob = new Blob(chunks, { type: recorder.mimeType });
-    const buffer = await Tone.getContext().decodeAudioData(await blob.arrayBuffer());
-    return { buffer, features: analyzeVoice(buffer) };
-  } finally {
-    stream.getTracks().forEach((track) => track.stop());
-  }
+  // TODO(入力1)
+  return null;
 }
 
-// 声の特徴。TODO(入力1): 声の高さ（ピッチ）・明るさなどを足して、設計図に使う
 export function analyzeVoice(buffer) {
-  const data = buffer.getChannelData(0);
-  let sum = 0;
-  for (let i = 0; i < data.length; i++) sum += data[i] * data[i];
-  return { loudness: Math.sqrt(sum / data.length), duration: buffer.duration };
+  // TODO(入力1)
+  return {};
 }
