@@ -1,10 +1,11 @@
 // 曲の設計図。入力（input/・sensor/）と曲（music/）の受け渡しはこれだけ。
-// 項目を足す・変えるときは change/ ブランチで、入力と曲の担当に相談してから。
-// 各項目の意味は docs/PRODUCT.md の「曲の設計図」。
+// 各項目の意味と範囲は docs/interfaces.md の「5. 設計図」。
+// 項目を足す・変えるときは docs/interfaces.md の「10. 形を変えるとき」に従う。
 import { clamp } from "./util.js";
 
 export const BLUEPRINT_VERSION = 1;
 export const SECTION_COUNT = 10;
+export const SOURCE_NAMES = ["voice", "taps", "quiz", "heart", "face"]; // 材料の名前（sources のキー）
 export const NOTES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 
 // 音階。暗い → 明るい の順に並べてある
@@ -25,7 +26,6 @@ export function defaultBlueprint() {
     scale: "dorian",
     density: 0.5,
     groove: [0, 0, 0, 0],
-    voice: false,
     timbre: [1, 0.5, 0.3, 0.15],
     sections: Array.from({ length: SECTION_COUNT }, (_, i) => ({
       q: i + 1,
@@ -33,6 +33,7 @@ export function defaultBlueprint() {
       brightness: 0.5,
       hesitation: 0,
     })),
+    sources: Object.fromEntries(SOURCE_NAMES.map((name) => [name, false])),
   };
 }
 
@@ -52,14 +53,15 @@ export function normalizeBlueprint(input = {}) {
     scale: input.scale in SCALES ? input.scale : base.scale,
     density: num(input.density, base.density, 0, 1),
     groove: base.groove.map((d, i) => num(input.groove?.[i], d, -0.05, 0.05)),
-    voice: Boolean(input.voice),
     timbre: timbre.slice(0, 16).map((v) => num(v, 0, 0, 1)),
-    sections: sections.slice(0, SECTION_COUNT).map((s, i) => ({
+    // 10個に満たないときは既定の区間で埋める
+    sections: Array.from({ length: SECTION_COUNT }, (_, i) => ({
       q: i + 1,
-      energy: num(s?.energy, 0.5, 0, 1),
-      brightness: num(s?.brightness, 0.5, 0, 1),
-      hesitation: num(s?.hesitation, 0, 0, 1),
+      energy: num(sections[i]?.energy, 0.5, 0, 1),
+      brightness: num(sections[i]?.brightness, 0.5, 0, 1),
+      hesitation: num(sections[i]?.hesitation, 0, 0, 1),
     })),
+    sources: Object.fromEntries(SOURCE_NAMES.map((name) => [name, Boolean(input.sources?.[name])])),
   };
 }
 

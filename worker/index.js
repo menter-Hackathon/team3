@@ -2,9 +2,13 @@
 // API キーはここでだけ使う（ブラウザに渡さない）。キーは env.ANTHROPIC_API_KEY
 // （手元は .dev.vars、本番は npx wrangler secret put ANTHROPIC_API_KEY）。
 //
+// 受け渡しの形は docs/interfaces.md の「8. サーバー・アプリとのやり取り」。
+//
 // 書くもの:
-//   POST /api/title  設計図（数字だけ）を受け取り、AI で曲名と短い解説を返す → { title, comment }
-//     キーがない・失敗したときも、決まった曲名を返す（AI は任意。曲は AI なしで聞けるようにする）
+//   POST /api/title  設計図を受け取り、AI で曲名と短い解説を返す
+//     → 200 { title: 20字以内, comment: 60字以内, ai: true }
+//     キーがない・失敗したときも 200 で、決まった曲名と ai: false を返す（曲は AI なしで聞けるようにする）
+//     JSON が壊れているときは 400、10KB を超えるときは 413
 //
 // 参考（Claude API）:
 //   import Anthropic from "@anthropic-ai/sdk";

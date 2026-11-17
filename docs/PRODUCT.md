@@ -26,14 +26,15 @@
 - 映像: p5.js 2（使うときだけ読み込む）
 - 表情・輪郭: MediaPipe Face Landmarker（@mediapipe/tasks-vision）
 - 心拍: Apple Watch・iPhone アプリ（Swift、HealthKit、WatchConnectivity）→ WebSocket で中継（未着手）
-- AI: Claude API（@anthropic-ai/sdk、曲名と解説だけ）。Worker の中だけで呼ぶ。モデルは `worker/index.js` の `MODEL`
+- AI: Claude API（@anthropic-ai/sdk、曲名と解説だけ）。Worker の中だけで呼ぶ。モデルは `worker/index.js` で決める
 - サーバー・配信: Cloudflare Workers（wrangler 4、@cloudflare/vite-plugin）。R2・Durable Objects は必要になったら
 
 ## 設計の決まりごと
 
+- **部品どうしの受け渡し（名前・単位・形・欠けたとき）は `docs/interfaces.md` に従う。受け渡しに関わるコードを書く・変える前に必ず読む**
 - 材料（入力）と曲の受け渡しは「曲の設計図」（JSON）だけにする。入力側は設計図を作るところまで、曲側は設計図を受け取るところから
 - どの材料が取れなくても曲は作れるようにする（心拍・カメラ・ネットは任意）
-- 体験者の声・顔・心拍は個人情報。ブラウザの中だけで使い、保存しない。リポジトリにも入れない
+- 体験者の声・顔・心拍は個人情報。保存しない。リポジトリにも入れない。声と顔はブラウザの外に出さない（心拍は中継を通るが、配るだけで保存しない）
 - 顔の画像や映像を AI や外部サービスに送らない
 - 顔の形から性格を判定しない。「○○タイプ」のようなタイプ分けはしない
 
@@ -45,34 +46,10 @@
 - 入力1: 録音した声・叩いたリズム・質問の答えと回答時間を、設計図の数字にする
 - 入力2: センサー（Apple Watch の心拍、MediaPipe の表情・輪郭）
 
-## 曲の設計図（例。形は未確定）
+## 曲の設計図
 
-形・既定値・見本は `src/blueprint.js`。形を変えるときは、このファイルと同じ PR で直す。
-
-```json
-{
-  "version": 1,
-  "bpm": 78,
-  "root": "D",
-  "scale": "dorian",
-  "density": 0.7,
-  "groove": [0, 0.03, -0.02, 0.05],
-  "voice": true,
-  "timbre": [1, 0.4, 0.25, 0.1],
-  "sections": [
-    { "q": 1, "energy": 0.3, "brightness": 0.5, "hesitation": 0.1 },
-    { "q": 2, "energy": 0.8, "brightness": 0.6, "hesitation": 0.0 }
-  ]
-}
-```
-
-- version: 設計図の形の版
-- bpm: 叩いた速さから決める。心拍があれば心拍に寄せる（60〜160）
-- root / scale / density: 性格診断から決める（キー・音階・音の多さ）。scale は暗い順に phrygian・aeolian・dorian・mixolydian・ionian・lydian
-- groove: 叩いたリズムのズレ。4拍それぞれを何秒前後にずらすか（±0.05）
-- voice: 録音した声があるか。声そのものは設計図に入れず、AudioBuffer のまま曲側に渡す
-- timbre: 輪郭から作った倍音の強さ（輪郭がなければ決まった音色）
-- sections: 1問ごとの盛り上がり・明るさ・迷い（0〜1）
+- 入力と曲の境目で渡す JSON。項目は `bpm`・`root`・`scale`・`density`・`groove`・`timbre`・`sections`（10問ぶん）・`sources`（どの材料が取れたか）
+- 形・範囲・例は `docs/interfaces.md` の「5. 設計図」、既定値と見本は `src/blueprint.js`
 - 曲の構成: イントロ2小節（声）→ 1問＝2小節 × 10 → アウトロ2小節（声）。80 BPM で約74秒
 
 ## セットアップ・起動・テスト
@@ -87,7 +64,7 @@
 
 ## ディレクトリ構成
 
-流れ: 材料 → `toBlueprint()` → 設計図 → `compose()` → 楽譜 → `renderSong()` → WAV
+流れ: 材料 → `toBlueprint()` → 設計図 → `compose()` → 楽譜 → `renderSong()` → WAV（受け渡しの形は `docs/interfaces.md`）
 
 ```
 index.html              画面の入口（UI）

@@ -1,7 +1,8 @@
 // 【曲2】AudioBuffer → WAV の Blob。
+// 受け渡しの形は docs/interfaces.md の「7. 出力」。
 //
 // 書くもの:
-//   audioBufferToWav(buffer) → new Blob([データ], { type: "audio/wav" })
+//   audioBufferToWav(audioBuffer) → new Blob([データ], { type: "audio/wav" })（16bit）
 //
 // 参考（16bit PCM の WAV）:
 //   先頭 44 バイトのヘッダを DataView で書く
@@ -9,7 +10,7 @@
 //   続けて、各サンプル（-1〜1）を 16bit の整数（× 32767）にし、チャンネルを交互に並べて書く
 //   「AudioBuffer to WAV」で探すと同じ形のコードが見つかる
 
-export function audioBufferToWav(buffer) {
+export function audioBufferToWav(audioBuffer) {
   // TODO(曲2)
   return null;
 }
