@@ -1,0 +1,7 @@
+// 自分の署名の設定。Local.xcconfig にコピーして書き換える（Local.xcconfig は git に入らない）。
+
+// Xcode > Settings > Accounts で、自分のチームの Team ID（10文字）を確認して書く
+DEVELOPMENT_TEAM = XXXXXXXXXX
+
+// 自分だけの Bundle ID の先頭（他の人とかぶらないもの。例: com.自分の名前）
+BUNDLE_ID_PREFIX = com.yourname

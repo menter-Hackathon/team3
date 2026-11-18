@@ -1,0 +1,57 @@
+# 心拍リレー（Apple Watch → iPhone → 中継サーバー → ブラウザ）の Xcode プロジェクト。
+# このファイルが正本。ファイルを足したり設定を変えたりしたら、watch/ で `xcodegen` を実行して
+# HeartRelay.xcodeproj を作り直す（Xcode の画面で直接設定を変えない）。
+name: HeartRelay
+options:
+  deploymentTarget:
+    iOS: "27.0"
+    watchOS: "9.0"
+  createIntermediateGroups: true
+configFiles:
+  Debug: Config/Base.xcconfig
+  Release: Config/Base.xcconfig
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "0.1"
+    CURRENT_PROJECT_VERSION: "1"
+targets:
+  HeartPhone:
+    type: application
+    platform: iOS
+    sources: [HeartPhone]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(BUNDLE_ID_PREFIX).team3heart
+        TARGETED_DEVICE_FAMILY: "1"
+    info:
+      path: HeartPhone/Info.plist
+      properties:
+        CFBundleDisplayName: 心拍リレー
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        NSLocalNetworkUsageDescription: 同じ Wi-Fi の中継サーバーに心拍を送るために使います。
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+    dependencies:
+      - target: HeartWatch
+  HeartWatch:
+    type: application
+    platform: watchOS
+    sources: [HeartWatch]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(BUNDLE_ID_PREFIX).team3heart.watchkitapp
+    info:
+      path: HeartWatch/Info.plist
+      properties:
+        CFBundleDisplayName: 心拍リレー
+        WKApplication: true
+        WKCompanionAppBundleIdentifier: $(BUNDLE_ID_PREFIX).team3heart
+        WKBackgroundModes: [workout-processing]
+        NSHealthShareUsageDescription: 心拍を測って、体験中の曲に使います。データは保存しません。
+        NSHealthUpdateUsageDescription: 心拍を測るためにワークアウトを使います。ワークアウトは保存しません。
+    entitlements:
+      path: HeartWatch/HeartWatch.entitlements
+      properties:
+        com.apple.developer.healthkit: true

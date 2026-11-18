@@ -44,7 +44,7 @@ UI（src/main.js）が順番に呼ぶ
 - 映像の材料（引数 `{ blueprint, score, audio }`）：`main.js` → `sketch.js`。`audio` は再生中の `<audio>`
 - 曲名 `titleResult`：`worker/index.js` → `main.js`（通信。JSON `{ title, comment, ai }`。送るのは `blueprint`）
 - 心拍の中継 `heartMessage`：iPhone アプリ（`RelayModel.swift`）→ `worker/heartRelay.js` → `heart.js`（通信。JSON `{ bpm }`）
-- Watch → iPhone（キー `bpm`）：`WorkoutManager.swift` → `RelayModel.swift`（WatchConnectivity の辞書）
+- Watch → iPhone（キー `bpm`・`at`）：`WorkoutManager.swift` → `RelayModel.swift`（WatchConnectivity の辞書。`at` は測った時刻）
 
 ## 2. 共通ルール
 
@@ -202,7 +202,8 @@ assets = { voice: AudioBuffer | null }
 - `{ "ok": true }`
 
 ### Apple Watch → iPhone（WatchConnectivity）
-- `["bpm": Double]` を `sendMessage` で送る。iPhone のアプリが開いていないときは、最新の値だけを `applicationContext` に置く。
+- `["bpm": Double, "at": 測った時刻（1970年からの秒）]` を `sendMessage` で送る。iPhone のアプリが開いていない・送れなかったときは、最新の値だけを `applicationContext` に置く。
+- iPhone は、10秒より古い値と、前に受け取ったものより古い・同じ時刻の値（2通りの送り方で2回届いたもの）を捨てる。
 
 ## 9. 個人情報（どこまで渡してよいか）
 

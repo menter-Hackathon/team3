@@ -25,7 +25,7 @@
 - 音: Tone.js 15（声の楽器化は GrainPlayer、書き出しは Tone.Offline → WAV）。DAW は使わない
 - 映像: p5.js 2（使うときだけ読み込む）
 - 表情・輪郭: MediaPipe Face Landmarker（@mediapipe/tasks-vision）
-- 心拍: Apple Watch・iPhone アプリ（Swift、HealthKit、WatchConnectivity）→ WebSocket で中継（未着手）
+- 心拍: Apple Watch・iPhone アプリ（Swift、HealthKit、WatchConnectivity、XcodeGen）→ WebSocket → 中継（Durable Objects）→ ブラウザ
 - AI: Claude API（@anthropic-ai/sdk、曲名と解説だけ）。Worker の中だけで呼ぶ。モデルは `worker/index.js` で決める
 - サーバー・配信: Cloudflare Workers（wrangler 4、@cloudflare/vite-plugin）。R2・Durable Objects は必要になったら
 
@@ -58,6 +58,7 @@
 - 初回: `npm install`
 - 起動: `npm run dev` → `http://localhost:5173`（画面と `/api` が両方動く）
 - AI を使うとき: `cp .dev.vars.example .dev.vars` してキーを入れる
+- 心拍を試すとき: `npm run dev -- --host` で同じ Wi-Fi の iPhone からつなげるようにする。アプリの手順は `watch/README.md`
 - ビルド確認: `npm run build`
 - 公開（チームで相談してから）: `npm run build && npx wrangler deploy`（初回は `npx wrangler login`）
 - テスト: 自動テストはまだない。音・カメラ・マイクはブラウザで実際に鳴らして確かめる
@@ -79,10 +80,12 @@ src/music/sound.js      曲2: 楽器・音色・エフェクト・音量
 src/music/render.js     曲2: 楽譜 → WAV（Tone.Offline）。wav.js が WAV 形式に変換
 src/visual/sketch.js    映像（p5.js）
 worker/index.js         サーバー（Cloudflare Worker）: /api/title（AI で曲名）・/api/health
+worker/heartRelay.js    入力2: 心拍の中継 /api/heart（iPhone → ブラウザ。Durable Objects）
 wrangler.jsonc          Cloudflare の設定
+watch/                  入力2: Apple Watch・iPhone アプリ（Xcode。手順は watch/README.md）
 ```
 
 - 各ファイルは中身が空。先頭に【担当】・書くもの（関数の入力と出力）・参考のコードを書いてある
 - 中身があるのは `src/blueprint.js`（設計図の形・既定値・見本）と `src/util.js` だけ
 - 前に入れていた仮の実装は、git のコミット `9cd3bd4` で見られる
-- Apple Watch・iPhone アプリは、作るときに `watch/` に Xcode のプロジェクトを置く予定
+- 心拍まわり（`watch/`・`worker/heartRelay.js`・`src/sensor/heart.js`）は中身を作ってある
