@@ -23,11 +23,18 @@
 //   const text = response.content.find((b) => b.type === "text")?.text; // JSON の文字列
 //   自由な文章は AI に渡さない（設計図の数字だけ）。公開する前に、呼べる回数の制限を考える
 
+import { handleHeart } from "./heartRelay.js";
+
+export { HeartRelay } from "./heartRelay.js"; // 心拍の中継（Durable Objects）。wrangler.jsonc で登録している
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     if (url.pathname === "/api/health") {
       return Response.json({ ok: true });
+    }
+    if (url.pathname === "/api/heart") {
+      return handleHeart(request, env); // 心拍の中継（worker/heartRelay.js）
     }
     // TODO: POST /api/title
     return Response.json({ error: "not found" }, { status: 404 });
