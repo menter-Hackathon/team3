@@ -16,6 +16,9 @@
       td { border-bottom: 1px solid #8883; padding: 4px 8px; vertical-align: top; }
       td:first-child { opacity: 0.7; width: 40%; }
       .note { opacity: 0.7; font-size: 0.9em; }
+      .materials { border-bottom: 1px dashed #8886; padding-bottom: 8px; margin-bottom: 8px; }
+      .tap-pad { border: 2px dashed #8886; border-radius: 12px; padding: 24px 16px; text-align: center; user-select: none; cursor: pointer; margin: 8px 0; }
+      .tap-pad.hit { background: #8883; }
     </style>
   </head>
   <body>
@@ -25,7 +28,7 @@
     <fieldset>
       <legend>1. 原曲の MIDI</legend>
       <input type="file" id="midiFile" accept=".mid,.midi,audio/midi" />
-      <button id="useSample">仮の原曲を使う（D dorian・8小節・90 BPM）</button>
+      <button id="useSample">仮の原曲を使う（D dorian・24小節・90 BPM）</button>
       <div>原曲のキー（分かれば）:
         <select id="songRoot"><option value="">自動（MIDI から読む・推定）</option></select>
         <select id="songScale"></select>
@@ -35,8 +38,24 @@
 
     <fieldset>
       <legend>2. 設計図</legend>
+      <div class="materials">
+        <strong>材料から作る（toBlueprint）</strong>
+        <div>声の WAV: <input type="file" id="materialVoice" accept=".wav,audio/*" /></div>
+        <div id="tapPad" class="tap-pad">ここを好きなリズムで叩く（クリック／タップ）</div>
+        <div>
+          <button id="tapReset">叩き直す</button>
+          見本:
+          <button data-sample="steady">安定・ゆっくり</button>
+          <button data-sample="rush">だんだん速く</button>
+          <button data-sample="loose">バラバラ</button>
+          <button data-sample="subdivide">途中から細かく</button>
+        </div>
+        <div><label><input type="checkbox" id="useHeart" /> 心拍（任意）</label> <input type="number" id="heartBpm" min="30" max="220" value="72" /> BPM</div>
+        <div><button id="makeBlueprint">材料から設計図を作る</button> <span id="materialInfo" class="note">声・叩いた間隔を選んでからボタンを押す（下の数字が入れ替わる）</span></div>
+      </div>
       <div>声から:
         <label>root <select id="bpRoot"></select></label>
+        <label><input type="checkbox" id="bpRootFromVoice" /> rootFromVoice（声の高さで移調）</label>
         <label>melodyRange <input type="number" id="bpMelodyRange" step="0.1" min="0" max="1" /></label>
         <label>breathiness <input type="number" id="bpBreathiness" step="0.1" min="0" max="1" /></label>
       </div>
@@ -72,6 +91,29 @@
         <button id="stop">止める</button>
         <button id="download" disabled>編集後の MIDI を保存</button>
       </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>4. 楽譜（編集後の MIDI → Score）</legend>
+      <table id="scoreResult"><tr><td colspan="2" class="note">1 を選ぶと表示されます</td></tr></table>
+      <div>
+        <button id="playScore" disabled>楽譜から鳴らす</button>
+        <button id="stopScore">止める</button>
+        <button id="downloadScore" disabled>楽譜（JSON）を保存</button>
+      </div>
+      <div class="note">楽譜の形は docs/interfaces.md の「7. 楽譜」。「楽譜から鳴らす」の音は確かめるための簡単な音。本番の音は下の WAV（sound.js）。</div>
+    </fieldset>
+
+    <fieldset>
+      <legend>5. WAV に書き出す（楽譜 → renderSong）</legend>
+      <div class="note">声は「2. 設計図」の材料で選んだ WAV（前後の無音を切ったもの）を、イントロとアウトロで流します。</div>
+      <div>
+        <button id="renderWav" disabled>WAV に書き出す</button>
+        <span id="renderInfo" class="note"></span>
+      </div>
+      <audio id="wavPlayer" controls style="width: 100%; margin-top: 8px"></audio>
+      <div><a id="wavLink" download hidden>WAV を保存</a></div>
+      <div class="note">声はブラウザの中だけで使い、保存・送信しません。</div>
     </fieldset>
 
     <script type="module" src="./blueprint-edit.js"></script>
