@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>声で MIDI を編集（確認用）</title>
+    <title>声と叩き方で MIDI を編集（確認用）</title>
     <style>
       :root { color-scheme: light dark; }
       body { font-family: system-ui, sans-serif; max-width: 760px; margin: 24px auto; padding: 0 16px; line-height: 1.6; }
@@ -14,11 +14,13 @@
       td { border-bottom: 1px solid #8883; padding: 4px 8px; vertical-align: top; }
       td:first-child { opacity: 0.7; width: 40%; }
       .note { opacity: 0.7; font-size: 0.9em; }
+      .tap-pad { border: 2px dashed #8886; border-radius: 12px; padding: 32px 16px; text-align: center; user-select: none; cursor: pointer; margin-bottom: 8px; }
+      .tap-pad.hit { background: #8883; }
     </style>
   </head>
   <body>
-    <h1>声で MIDI を編集（確認用）</h1>
-    <p class="note">開発用のページです（本番の画面には出ません）。声はブラウザの中だけで使い、保存・送信しません。</p>
+    <h1>声と叩き方で MIDI を編集（確認用）</h1>
+    <p class="note">開発用のページです（本番の画面には出ません）。声はブラウザの中だけで使い、保存・送信しません。編集の順番は 声（移調・音域）→ 叩き方（テンポ・ノリ・ドラム・揺らぎ）。</p>
 
     <fieldset>
       <legend>1. 原曲の MIDI</legend>
@@ -38,7 +40,20 @@
     </fieldset>
 
     <fieldset>
-      <legend>3. 結果</legend>
+      <legend>3. 叩いたリズム</legend>
+      <div id="tapPad" class="tap-pad">ここを好きなリズムで叩く（クリック／タップ）</div>
+      <div>
+        <button id="tapReset">叩き直す</button>
+        <button data-sample="steady">見本: 安定・ゆっくり</button>
+        <button data-sample="rush">見本: 速い・だんだん速く</button>
+        <button data-sample="loose">見本: バラバラ</button>
+        <button id="noTaps">叩かないで試す</button>
+      </div>
+      <div id="tapInfo" class="note">まだ叩いていません（叩かなければ、原曲のテンポ・リズムのまま）</div>
+    </fieldset>
+
+    <fieldset>
+      <legend>4. 結果</legend>
       <table id="result"><tr><td colspan="2" class="note">1 と 2 を選ぶと表示されます</td></tr></table>
       <div>
         <button id="playOriginal" disabled>原曲を鳴らす</button>
