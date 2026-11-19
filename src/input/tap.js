@@ -1,4 +1,4 @@
-// 【入力1】画面を叩いたリズム → 速さ（BPM）・ズレ（groove）・安定度（stability）。
+// 【入力】（analyzeTaps は出力の toBlueprint が使う）画面を叩いたリズム → 速さ（BPM）・ズレ（groove）・安定度（stability）。
 import { clamp, median } from "../util.js";
 
 const MIN_BPM = 60;

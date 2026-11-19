@@ -7,15 +7,14 @@
 // 参考（部品のつなぎ方）:
 //   await Tone.start();                       // 音はクリックのあとでないと鳴らせない。最初のボタンで呼ぶ
 //   const heartConnection = connectHeart(url); // 心拍（任意。null のこともある）
-//   const voice = await recordVoice(5000);    // 声（null のこともある）
-//   const taps = analyzeTaps(tapTimesMs);     // 叩いた時刻（performance.now()）の配列から
+//   const voiceWav = await recordVoice(5000); // 声の WAV（Blob。null のこともある）
+//   const tapIntervalsMs = …;                 // 叩いた間隔（ミリ秒）の配列。pointerdown の時刻の差（4回未満なら null）
 //   const quiz = [{ value, responseMs }, …];  // 10問の答え（1〜5）と、質問を出してから答えるまでの時間
 //   const face = await captureFace();         // 顔（任意）
 //   const heart = heartConnection?.bpm != null ? { bpm: heartConnection.bpm } : null;
-//   const materials = { voice, taps, quiz, heart, face };
-//   const blueprint = toBlueprint(materials);
-//   const score = compose(blueprint);
-//   const assets = { voice: voice?.buffer ?? null };
+//   const materials = { voiceWav, tapIntervalsMs, quiz, heart, face };
+//   const { blueprint, assets } = await toBlueprint(materials); // 出力: 材料 → 設計図と声の音
+//   const score = await compose(blueprint);
 //   const wav = await renderSong(score, assets);  // 失敗したらエラー画面
 //   const url = URL.createObjectURL(wav);     // <audio src> で再生、<a href download="rashisa-YYYYMMDD-HHMM.wav"> で保存
 //   const titleResult = await (await fetch("/api/title", { method: "POST", body: JSON.stringify(blueprint) })).json();

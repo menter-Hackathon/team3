@@ -23,6 +23,7 @@
 
 - 画面: HTML・CSS・JavaScript（Mac の Chrome で動かす）。Vite 8 で開発・ビルド
 - 音: Tone.js 15（声の楽器化は GrainPlayer、書き出しは Tone.Offline → WAV）。DAW は使わない
+- 原曲: AI で作った4曲の MIDI。@tonejs/midi で読み書きして編集する
 - 映像: p5.js 2（使うときだけ読み込む）
 - 表情・輪郭: MediaPipe Face Landmarker（@mediapipe/tasks-vision）
 - 心拍: Apple Watch・iPhone アプリ（Swift、HealthKit、WatchConnectivity、XcodeGen）→ WebSocket → 中継（Durable Objects）→ ブラウザ
@@ -32,24 +33,31 @@
 ## 設計の決まりごと
 
 - **部品どうしの受け渡し（名前・単位・形・欠けたとき）は `docs/interfaces.md` に従う。受け渡しに関わるコードを書く・変える前に必ず読む**
-- 材料（入力）と曲の受け渡しは「曲の設計図」（JSON）だけにする。入力側は設計図を作るところまで、曲側は設計図を受け取るところから
+- 入力と出力の境目は「材料」（録音した声の WAV・叩いた間隔・10問の答え）。入力側は材料を集めて渡すところまで、出力側は材料を受け取るところから
+- 出力の中では「材料 → 設計図 → 楽譜 → WAV」の順に渡す。設計図より後ろ（MIDI の編集・楽譜・WAV）は材料を直接見ず、設計図だけを使う
 - どの材料が取れなくても曲は作れるようにする（心拍・カメラ・ネットは任意）
 - 体験者の声・顔・心拍は個人情報。保存しない。リポジトリにも入れない。声と顔はブラウザの外に出さない（心拍は中継を通るが、配るだけで保存しない）
 - 顔の画像や映像を AI や外部サービスに送らない
 - 顔の形から性格を判定しない。「○○タイプ」のようなタイプ分けはしない
 
-## 役割（案）
+## 役割
 
 - UI: 画面の見た目と流れ。最後にみんなの部品をつなぐ
-- 曲1（骨組み）: 設計図から、曲の構成・和音・メロディ・リズム・テンポを決めて鳴らす
-- 曲2（音色と書き出し）: 声を楽器の音にする、楽器の音・エフェクト・音量をそろえる処理、WAV への書き出し
-- 入力1: 録音した声・叩いたリズム・質問の答えと回答時間を、設計図の数字にする
-- 入力2: センサー（Apple Watch の心拍、MediaPipe の表情・輪郭）
+- 入力: 声を録音して WAV にする、叩いた間隔を集める、10問の答えと回答時間を集める。出力側に材料として渡す
+- センサー（任意の要素）: Apple Watch の心拍、MediaPipe の表情・輪郭。入力側で作られていれば使い、なければ使わずに曲を作る
+- 出力:
+  - 原曲4曲（MIDI）を作る：うごてん
+  - 材料 → 設計図（`toBlueprint`）：声・叩く＝たいが、質問＝うごてん（心拍・顔は任意。取れたときだけ使う）
+  - 設計図 → 原曲4曲から1曲を選ぶ：うごてん
+  - 設計図 → 選んだ原曲の MIDI を編集する：たいが
+  - MIDI → 楽譜（Score）：たいが
+  - 楽譜 → WAV（楽器・音色・エフェクト・音量・書き出し）：たいが
 
 ## 曲の設計図
 
-- 入力と曲の境目で渡す JSON。項目は `bpm`・`root`・`scale`・`density`・`groove`・`timbre`・`sections`（10問ぶん）・`sources`（どの材料が取れたか）
+- 出力の中で、材料から作って、原曲の選択・MIDI の編集に使う JSON。項目は `bpm`・`root`・`scale`・`density`・`groove`・`timbre`・`sections`（10問ぶん）・`sources`（どの材料が取れたか）と、追加の `baseSong`（原曲の番号）・`melodyRange`・`breathiness`・`stability`・`tempoDrift`
 - 形・範囲・例は `docs/interfaces.md` の「5. 設計図」、既定値と見本は `src/blueprint.js`
+- 原曲4曲の MIDI の決まりは `docs/interfaces.md` の「6. 原曲」
 - 曲の構成: イントロ2小節（声）→ 1問＝2小節 × 10 → アウトロ2小節（声）。80 BPM で約74秒
 
 ## セットアップ・起動・テスト
@@ -65,7 +73,7 @@
 
 ## ディレクトリ構成
 
-流れ: 材料 → `toBlueprint()` → 設計図 → `compose()` → 楽譜 → `renderSong()` → WAV（受け渡しの形は `docs/interfaces.md`）
+流れ: 材料（入力）→ `toBlueprint()` → 設計図 → `compose()`（原曲を選ぶ → MIDI を編集 → 楽譜）→ `renderSong()` → WAV（ここまで出力。受け渡しの形は `docs/interfaces.md`）
 
 ```
 index.html              画面の入口（UI）
@@ -73,16 +81,18 @@ src/main.js             画面の流れ。各担当の部品をつなぐ（UI）
 src/style.css           見た目（UI）
 src/blueprint.js        曲の設計図の形・既定値・見本（全員。変えるときは相談）
 src/util.js             共通の小さな関数
-src/input/              入力1: voice.js（声）・tap.js（叩く）・quiz.js（10問）・toBlueprint.js（材料 → 設計図）
-src/sensor/             入力2: heart.js（心拍）・face.js（顔の輪郭 → 音色）
-src/music/compose.js    曲1: 設計図 → 楽譜（構成・和音・メロディ・リズム）
-src/music/sound.js      曲2: 楽器・音色・エフェクト・音量
-src/music/render.js     曲2: 楽譜 → WAV（Tone.Offline）。wav.js が WAV 形式に変換
+src/input/              入力: voice.js（声の録音・分析）・tap.js（叩く）・quiz.js（10問）
+src/input/toBlueprint.js 出力: 材料 → 設計図（声・叩く＝たいが、質問＝うごてん）
+src/sensor/             センサー（任意）: heart.js（心拍）・face.js（顔の輪郭 → 音色）
+src/music/compose.js    出力: 設計図 → 原曲を選ぶ → MIDI を編集 → 楽譜
+src/music/edit/         出力: 原曲の MIDI を設計図で編集する
+src/music/sound.js      出力: 楽器・音色・エフェクト・音量
+src/music/render.js     出力: 楽譜 → WAV（Tone.Offline）。wav.js が WAV 形式に変換
 src/visual/sketch.js    映像（p5.js）
 worker/index.js         サーバー（Cloudflare Worker）: /api/title（AI で曲名）・/api/health
-worker/heartRelay.js    入力2: 心拍の中継 /api/heart（iPhone → ブラウザ。Durable Objects）
+worker/heartRelay.js    センサー（任意）: 心拍の中継 /api/heart（iPhone → ブラウザ。Durable Objects）
 wrangler.jsonc          Cloudflare の設定
-watch/                  入力2: Apple Watch・iPhone アプリ（Xcode。手順は watch/README.md）
+watch/                  センサー（任意）: Apple Watch・iPhone アプリ（Xcode。手順は watch/README.md）
 ```
 
 - 各ファイルは中身が空。先頭に【担当】・書くもの（関数の入力と出力）・参考のコードを書いてある

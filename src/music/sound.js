@@ -1,5 +1,5 @@
-// 【曲2】楽譜 → 音（楽器・音色・エフェクト・音量）。
-// 受け渡しの形は docs/interfaces.md の「6. 楽譜」。
+// 【出力・たいが】楽譜 → 音（楽器・音色・エフェクト・音量）。
+// 受け渡しの形は docs/interfaces.md の「7. 楽譜」。
 //
 // 書くもの:
 //   scheduleSong(score, assets) 楽器を作り、楽譜の音をすべて予約する（戻り値なし）
@@ -18,5 +18,5 @@
 //   注意: 同じ楽器を同じ時刻に2回鳴らすとエラーになることがある
 
 export function scheduleSong(score, assets = { voice: null }) {
-  // TODO(曲2)
+  // TODO(出力・たいが)
 }

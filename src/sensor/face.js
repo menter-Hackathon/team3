@@ -1,4 +1,4 @@
-// 【入力2】顔（任意）。MediaPipe Face Landmarker で顔の輪郭を取り、形をそのまま音色（設計図の timbre）にする。
+// 【センサー（任意）】顔。MediaPipe Face Landmarker で顔の輪郭を取り、形をそのまま音色（設計図の timbre）にする。
 // 顔の画像は保存しない・外部に送らない。このファイルの外に出すのは timbre の数字だけ。顔の形から性格は判定しない。
 // 受け渡しの形は docs/interfaces.md の「4. 材料」。
 //
@@ -23,6 +23,6 @@
 //   輪郭の中心からの距離を角度の順に並べ、フーリエ変換して 1〜8 番目の強さを取り、0〜1 にそろえる
 
 export async function captureFace() {
-  // TODO(入力2)
+  // TODO(センサー・任意)
   return null;
 }
