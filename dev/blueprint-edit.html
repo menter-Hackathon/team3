@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>設計図で MIDI を編集（確認用）</title>
+    <style>
+      :root { color-scheme: light dark; }
+      body { font-family: system-ui, sans-serif; max-width: 760px; margin: 24px auto; padding: 0 16px; line-height: 1.6; }
+      fieldset { border: 1px solid #8884; border-radius: 8px; margin: 16px 0; padding: 12px 16px; }
+      legend { font-weight: bold; }
+      button { margin: 4px 8px 4px 0; padding: 6px 14px; }
+      label { display: inline-block; margin: 4px 12px 4px 0; }
+      input[type="number"] { width: 5em; }
+      table { border-collapse: collapse; width: 100%; }
+      td { border-bottom: 1px solid #8883; padding: 4px 8px; vertical-align: top; }
+      td:first-child { opacity: 0.7; width: 40%; }
+      .note { opacity: 0.7; font-size: 0.9em; }
+    </style>
+  </head>
+  <body>
+    <h1>設計図で MIDI を編集（確認用）</h1>
+    <p class="note">開発用のページです（本番の画面には出ません）。曲の側は設計図だけを受け取ります。使う項目は root・melodyRange・breathiness（声）、bpm・tempoDrift・groove・stability（叩く）、sources。</p>
+
+    <fieldset>
+      <legend>1. 原曲の MIDI</legend>
+      <input type="file" id="midiFile" accept=".mid,.midi,audio/midi" />
+      <button id="useSample">仮の原曲を使う（D dorian・8小節・90 BPM）</button>
+      <div>原曲のキー（分かれば）:
+        <select id="songRoot"><option value="">自動（MIDI から読む・推定）</option></select>
+        <select id="songScale"></select>
+      </div>
+      <div id="midiInfo" class="note">まだ読み込んでいません</div>
+    </fieldset>
+
+    <fieldset>
+      <legend>2. 設計図</legend>
+      <div>声から:
+        <label>root <select id="bpRoot"></select></label>
+        <label>melodyRange <input type="number" id="bpMelodyRange" step="0.1" min="0" max="1" /></label>
+        <label>breathiness <input type="number" id="bpBreathiness" step="0.1" min="0" max="1" /></label>
+      </div>
+      <div>叩く・心拍から:
+        <label>bpm <input type="number" id="bpBpm" min="60" max="160" /></label>
+        <label>stability <input type="number" id="bpStability" step="0.1" min="0" max="1" /></label>
+        <label>tempoDrift <input type="number" id="bpTempoDrift" step="0.01" min="0.9" max="1.1" /></label>
+      </div>
+      <div>groove（秒、各 ±0.05）:
+        <input type="number" class="groove" step="0.01" min="-0.05" max="0.05" value="0" />
+        <input type="number" class="groove" step="0.01" min="-0.05" max="0.05" value="0" />
+        <input type="number" class="groove" step="0.01" min="-0.05" max="0.05" value="0" />
+        <input type="number" class="groove" step="0.01" min="-0.05" max="0.05" value="0" />
+      </div>
+      <div>sources:
+        <label><input type="checkbox" id="srcVoice" /> voice（声）</label>
+        <label><input type="checkbox" id="srcTaps" /> taps（叩いた）</label>
+        <label><input type="checkbox" id="srcHeart" /> heart（心拍）</label>
+      </div>
+      <div>
+        <button id="useSampleBlueprint">見本の設計図（SAMPLE_BLUEPRINT）</button>
+        <button id="useDefaultBlueprint">既定の設計図（材料なし）</button>
+      </div>
+      <div class="note">voice がなければキー・音域・音の柔らかさは原曲のまま。taps も heart もなければテンポは原曲のまま。テンポの変化・ドラム・ノリ・揺らぎは taps があるときだけ。</div>
+    </fieldset>
+
+    <fieldset>
+      <legend>3. 結果</legend>
+      <table id="result"><tr><td colspan="2" class="note">1 を選ぶと表示されます</td></tr></table>
+      <div>
+        <button id="playOriginal" disabled>原曲を鳴らす</button>
+        <button id="playEdited" disabled>編集後を鳴らす</button>
+        <button id="stop">止める</button>
+        <button id="download" disabled>編集後の MIDI を保存</button>
+      </div>
+    </fieldset>
+
+    <script type="module" src="./blueprint-edit.js"></script>
+  </body>
+</html>
