@@ -1,5 +1,5 @@
-// 【曲2】楽譜 → 音声ファイル（WAV の Blob）。
-// 受け渡しの形は docs/interfaces.md の「6. 楽譜」「7. 出力」。
+// 【出力・たいが】楽譜 → 音声ファイル（WAV の Blob）。
+// 受け渡しの形は docs/interfaces.md の「7. 楽譜」「8. 出力」。
 //
 // 書くもの:
 //   renderSong(score, assets) → WAV の Blob（audio/wav、44.1kHz・16bit・ステレオ）
@@ -13,6 +13,6 @@
 //   画面ではこの WAV を <audio> で流すと、「聞いた曲」と「持ち帰る曲」が同じになる
 
 export async function renderSong(score, assets = { voice: null }) {
-  // TODO(曲2)
+  // TODO(出力・たいが)
   return null;
 }

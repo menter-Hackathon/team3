@@ -1,5 +1,5 @@
-// 【曲2】AudioBuffer → WAV の Blob。
-// 受け渡しの形は docs/interfaces.md の「7. 出力」。
+// 【出力・たいが】AudioBuffer → WAV の Blob。
+// 受け渡しの形は docs/interfaces.md の「8. 出力」。
 //
 // 書くもの:
 //   audioBufferToWav(audioBuffer) → new Blob([データ], { type: "audio/wav" })（16bit）
@@ -11,6 +11,6 @@
 //   「AudioBuffer to WAV」で探すと同じ形のコードが見つかる
 
 export function audioBufferToWav(audioBuffer) {
-  // TODO(曲2)
+  // TODO(出力・たいが)
   return null;
 }

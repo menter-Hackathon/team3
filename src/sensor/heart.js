@@ -1,5 +1,5 @@
-// 【入力2】心拍（任意）。Apple Watch → iPhone → 中継（/api/heart、worker/heartRelay.js）→ ここ（WebSocket で受け取る）。
-// 受け渡しの形は docs/interfaces.md の「4. 材料」「8. サーバー・アプリとのやり取り」。
+// 【センサー（任意）】心拍。Apple Watch → iPhone → 中継（/api/heart、worker/heartRelay.js）→ ここ（WebSocket で受け取る）。
+// 受け渡しの形は docs/interfaces.md の「4. 材料」「9. サーバー・アプリとのやり取り」。
 //
 // connectHeart(url) → { bpm: 今の値 | null, close() } | null
 //   心拍を使わないとき・URL が正しくないときは null（例外を投げない）

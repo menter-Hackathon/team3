@@ -1,5 +1,5 @@
-// 【曲1】設計図 → 楽譜（いつ・どの楽器で・どの音を鳴らすか）。ここではまだ音を鳴らさない。
-// 受け渡しの形は docs/interfaces.md の「5. 設計図」「6. 楽譜」。
+// 【出力・たいが（原曲の選択はうごてん）】設計図 → 原曲4曲から1曲を選ぶ → MIDI を編集 → 楽譜。ここではまだ音を鳴らさない。
+// 受け渡しの形は docs/interfaces.md の「5. 設計図」「6. 原曲」「7. 楽譜」。原曲の MIDI を読むので async（Promise<Score> を返す）。
 //
 // 書くもの:
 //   compose(blueprint) → Score = {
@@ -27,9 +27,9 @@
 //   入力ができる前は、SAMPLE_BLUEPRINT（src/blueprint.js）で試せる
 import { normalizeBlueprint } from "../blueprint.js";
 
-export function compose(blueprint) {
+export async function compose(blueprint) {
   const bp = normalizeBlueprint(blueprint);
-  // TODO(曲1)
+  // TODO(出力・たいが)
   return {
     bpm: bp.bpm,
     duration: 0,

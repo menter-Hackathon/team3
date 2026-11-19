@@ -2,7 +2,7 @@
 // API キーはここでだけ使う（ブラウザに渡さない）。キーは env.ANTHROPIC_API_KEY
 // （手元は .dev.vars、本番は npx wrangler secret put ANTHROPIC_API_KEY）。
 //
-// 受け渡しの形は docs/interfaces.md の「8. サーバー・アプリとのやり取り」。
+// 受け渡しの形は docs/interfaces.md の「9. サーバー・アプリとのやり取り」。
 //
 // 書くもの:
 //   POST /api/title  設計図を受け取り、AI で曲名と短い解説を返す

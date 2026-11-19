@@ -1,4 +1,4 @@
-// 【入力2】心拍の中継（Cloudflare Durable Objects）。
+// 【センサー（任意）】心拍の中継（Cloudflare Durable Objects）。
 // iPhone アプリ（送る側）から届いた {"bpm":72} を、つながっているブラウザ（受け取る側）全部に配る。
 // 同じ「部屋」（?room=、なければ default）につないだ人どうしだけでやり取りする。
 //
