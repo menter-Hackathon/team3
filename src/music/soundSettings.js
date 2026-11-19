@@ -1,6 +1,6 @@
 // 【出力・共通】設計図 → 音の柔らかさの設定（リバーブ・パッド）。
 // 楽譜（midiToScore → score.sound）・音（sound.js）・MIDI の CC（MIDI の編集）が同じ数字を使うように、ここ1か所で決める。
-// 変えるとどれにも効くので、変えるときは2人（たいが・うごてん）で相談する。
+// うごてんは自由に変えてよい（たいがへの確認は不要）。変えると楽譜・音・MIDI の CC のどれにも効くので、変えたことは PR に書く。
 // ここでは音を鳴らさない・ブラウザの機能を使わない（Node でも動く）。
 //
 // soundFromBlueprint(blueprint) → { reverbDecay, reverbWet, padAttack, padRelease, padFilterHz }（Tone.js でそのまま使える数字）

@@ -88,8 +88,8 @@ UI（src/main.js）が順番に呼ぶ
 - `src/sensor/face.js`（センサー・任意）：`captureFace()` → `Face | null`
 - `src/music/compose.js`（出力。原曲の選択・編集＝うごてん、楽譜＝たいが）：`compose(blueprint)` → `Promise<Score>`（原曲の MIDI を読むので async）
 - `src/music/edit/blueprintEdit.js`（出力・うごてん）：`editMidiByBlueprint(midi, blueprint, songKey)` → `{ midi, report }`
-- `src/music/parts.js`（出力・共通。変えるときは2人で相談）：`findParts(midi)` → `{ pitched, melody, pad, drums }`・`isDrum(track)`（MIDI のトラックの見分け）
-- `src/music/soundSettings.js`（出力・共通。変えるときは2人で相談）：`soundFromBlueprint(blueprint)` → 音の柔らかさの設定（楽譜の `sound`・MIDI の CC・sound.js が同じ数字を使う）
+- `src/music/parts.js`（出力・共通。うごてんは自由に変えてよい・たいがへの確認は不要）：`findParts(midi)` → `{ pitched, melody, pad, drums }`・`isDrum(track)`（MIDI のトラックの見分け）
+- `src/music/soundSettings.js`（出力・共通。うごてんは自由に変えてよい・たいがへの確認は不要）：`soundFromBlueprint(blueprint)` → 音の柔らかさの設定（楽譜の `sound`・MIDI の CC・sound.js が同じ数字を使う）
 - `src/music/midiToScore.js`（出力・たいが）：`midiToScore(midi, blueprint)` → `{ score, report }`
 - `src/music/sound.js`（出力・たいが）：`scheduleSong(score, assets)` → `Promise`（楽器を作って予約する。リバーブの準備ができたら終わる）
 - `src/music/render.js`（出力・たいが）：`renderSong(score, assets)` → `Promise<Blob>`（WAV）
