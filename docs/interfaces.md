@@ -57,7 +57,7 @@ UI（src/main.js）が順番に呼ぶ
 
 ### 単位
 - 時間は**秒**が基本（`time`・`duration`・`start`・`end`）。
-- ミリ秒は `performance.now()` で取った生の時刻だけ。名前の最後に `Ms` を付ける（`tapTimesMs`、`responseMs`）。
+- ミリ秒は `performance.now()` で取った時刻と、その差（間隔）だけ。名前の最後に `Ms` を付ける（`tapTimesMs`、`tapIntervalsMs`、`responseMs`）。
 - 周波数は名前に `Hz` を付ける（`pitchHz`）。音の高さのずれはセント（`detune`）。
 - 強さ・割合は 0〜1。名前に単位は付けない（`energy`、`velocity`、`loudness`）。
 - 音名は `"C4"` の形。シャープだけ使い、フラットは使わない（`"C#4"`）。主音はオクターブなし（`"D"`）。
@@ -68,7 +68,7 @@ UI（src/main.js）が順番に呼ぶ
 - 入力の関数は、許可されない・機器がない・失敗した、のどれでも**例外を投げずに `null` を返す**。UI は `null` なら次へ進む。
 - マイク・カメラを開いた関数は、値を返す前に必ず閉じる。
 - 受け取る側は値を信じすぎない。曲側は必ず `normalizeBlueprint()` を通してから使う。
-- 例外を投げてよいのは `renderSong` だけ（曲が作れないのは致命的なので）。UI はエラー画面を出す。
+- 例外を投げてよいのは `compose`（原曲の MIDI が読めないとき）と `renderSong` だけ（曲が作れないのは致命的なので）。UI はエラー画面を出す。
 
 ### 形式（全部が JSON ではない）
 - ブラウザの中のファイルどうしは、関数の引数と戻り値で JS のオブジェクトをそのまま渡す（JSON の文字列にはしない）。
@@ -159,7 +159,7 @@ HeartConnection = { bpm: number | null（今の値。まだ届いていなけれ
 | `sections` | 必ず10個 | 質問（1問ごと） | うごてん | 1問ごとの区間（2小節）の `q`（1〜10）・盛り上がり `energy`・明るさ `brightness`・迷い `hesitation`（各 0〜1） |
 | `sources` | 真偽値 | どの材料が取れたか | 全員 | 画面の表示・AI の曲名・確認。`taps`・`heart` がなければテンポは原曲のまま、`taps` がなければノリ・ドラム・揺らぎも原曲のまま |
 
-- （追加）の項目は、既定値があって、なくても動く追加なので `version` は 1 のまま（「11. 形を変えるとき」）。決まったら `src/blueprint.js` の `defaultBlueprint()`・`normalizeBlueprint()` にも足す。
+- （追加）の項目は、既定値があって、なくても動く追加なので `version` は 1 のまま（「11. 形を変えるとき」）。`src/blueprint.js` の `defaultBlueprint()`・`normalizeBlueprint()` にも足す。
 - 足りない材料の所は既定値（`defaultBlueprint()`）のままにする。
 - 性格 → 音楽の決め方（`baseSong`・`scale`・`density`・`sections` の決め方）は `toBlueprint` の質問の部分に書く（うごてん）。
 - 曲の構成：イントロ2小節（声）→ 1問＝2小節 × 10 → アウトロ2小節（声）。80 BPM で約74秒。

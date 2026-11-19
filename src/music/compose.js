@@ -27,7 +27,7 @@
 //   入力ができる前は、SAMPLE_BLUEPRINT（src/blueprint.js）で試せる
 import { normalizeBlueprint } from "../blueprint.js";
 
-export function compose(blueprint) {
+export async function compose(blueprint) {
   const bp = normalizeBlueprint(blueprint);
   // TODO(出力・たいが)
   return {

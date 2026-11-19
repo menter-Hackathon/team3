@@ -1,5 +1,5 @@
 // 【映像】（担当なし・手が空いた人）設計図や曲に合わせて絵を描く。
-// 受け渡しの形は docs/interfaces.md の「7. 出力」。
+// 受け渡しの形は docs/interfaces.md の「8. 出力」。
 //
 // 書くもの:
 //   drawVisual(container, { blueprint, score, audio }) → { remove() }（p5 のインスタンスでよい）
