@@ -23,7 +23,7 @@
 
 - 画面: HTML・CSS・JavaScript（Mac の Chrome で動かす）。Vite 8 で開発・ビルド
 - 音: Tone.js 15（声の楽器化は GrainPlayer、書き出しは Tone.Offline → WAV）。DAW は使わない
-- 原曲: AI で作った4曲の MIDI。@tonejs/midi で読み書きして編集する
+- 原曲: AI で作った4曲の MP3 を、プロダクトの外で MIDI にする（`tools/mp3-to-midi`：Python 3.11・Demucs で楽器ごとに分ける・Basic Pitch で採譜）。MIDI は @tonejs/midi で読み書きして編集する
 - 映像: p5.js 2（使うときだけ読み込む）
 - 表情・輪郭: MediaPipe Face Landmarker（@mediapipe/tasks-vision）
 - 心拍: Apple Watch・iPhone アプリ（Swift、HealthKit、WatchConnectivity、XcodeGen）→ WebSocket → 中継（Durable Objects）→ ブラウザ
@@ -59,7 +59,8 @@
 - 出力の中で、材料から作って、原曲の選択・MIDI の編集に使う JSON。項目は `bpm`・`root`・`scale`・`density`・`groove`・`timbre`・`sections`（10問ぶん）・`sources`（どの材料が取れたか）と、追加の `baseSong`（原曲の番号）・`melodyRange`・`breathiness`・`stability`・`tempoDrift`
 - 形・範囲・例は `docs/interfaces.md` の「5. 設計図」、既定値と見本は `src/blueprint.js`
 - 原曲4曲の MIDI の決まりは `docs/interfaces.md` の「6. 原曲」
-- 曲の構成: イントロ2小節（声）→ 1問＝2小節 × 10 → アウトロ2小節（声）。80 BPM で約74秒
+- 曲の構成: イントロ（声）→ 1問 × 10 → アウトロ（声）。**約1分**で、テンポに合わせて小節の数を変える（`src/music/edit/layout.js`）。最後のアウトロで音楽だけフェードアウトし、本人の声は残る
+- 設計図の要素は、その人らしさがはっきり出るように強めに効かせる（範囲は `docs/song-elements.csv`）
 
 ## セットアップ・起動・テスト
 
@@ -86,7 +87,7 @@ src/input/              入力: voice.js（声の録音・分析）・tap.js（�
 src/input/toBlueprint.js 出力: 材料 → 設計図（声・叩く＝たいが、質問＝うごてん）
 src/sensor/             センサー（任意）: heart.js（心拍）・face.js（顔の輪郭 → 音色）
 src/music/compose.js    出力: 設計図 → 原曲を選ぶ・MIDI を編集（うごてん）→ 楽譜（たいが）
-src/music/edit/         出力: 原曲の MIDI を設計図で編集する（うごてん）
+src/music/edit/         出力: 原曲の MIDI を設計図で編集する・曲の長さを決める（layout.js）（うごてん）
 src/music/midiToScore.js 出力: MIDI → 楽譜（たいが）
 src/music/parts.js      出力・共通: MIDI のトラックの見分け（MIDI の編集と楽譜の両方が使う）
 src/music/soundSettings.js 出力・共通: 設計図 → 音の柔らかさの設定（楽譜・音・MIDI の CC が使う）
@@ -94,12 +95,13 @@ src/music/sound.js      出力: 楽器・音色・エフェクト・音量
 src/music/render.js     出力: 楽譜 → WAV（Tone.Offline）。wav.js が WAV 形式に変換
 src/visual/sketch.js    映像（p5.js）
 worker/index.js         サーバー（Cloudflare Worker）: /api/title（AI で曲名）・/api/health
+tools/mp3-to-midi/       出力（プロダクトの外）: 原曲の MP3 → MIDI（うごてん。使い方は README.md）
 worker/heartRelay.js    センサー（任意）: 心拍の中継 /api/heart（iPhone → ブラウザ。Durable Objects）
 wrangler.jsonc          Cloudflare の設定
 watch/                  センサー（任意）: Apple Watch・iPhone アプリ（Xcode。手順は watch/README.md）
 ```
 
-- 各ファイルは中身が空。先頭に【担当】・書くもの（関数の入力と出力）・参考のコードを書いてある
-- 中身があるのは `src/blueprint.js`（設計図の形・既定値・見本）と `src/util.js` だけ
+- 各ファイルの先頭に【担当】・書くもの（関数の入力と出力）・参考のコードを書いてある
+- まだ中身がないのは `src/main.js`・`src/music/compose.js`・`src/sensor/face.js`・`src/visual/sketch.js`・`/api/title`（2026-11-20 時点。曲の要素ごとの状況は `docs/song-elements.csv`）
 - 前に入れていた仮の実装は、git のコミット `9cd3bd4` で見られる
 - 心拍まわり（`watch/`・`worker/heartRelay.js`・`src/sensor/heart.js`）は中身を作ってある

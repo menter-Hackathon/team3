@@ -167,19 +167,21 @@ HeartConnection = { bpm: number | null（今の値。まだ届いていなけれ
 - （追加）の項目は、既定値があって、なくても動く追加なので `version` は 1 のまま（「11. 形を変えるとき」）。`src/blueprint.js` の `defaultBlueprint()`・`normalizeBlueprint()` にも足す。
 - 足りない材料の所は既定値（`defaultBlueprint()`）のままにする。
 - 性格 → 音楽の決め方（`baseSong`・`scale`・`density`・`sections` の決め方）は `toBlueprint` の質問の部分に書く（うごてん）。
-- 曲の構成：イントロ2小節（声）→ 1問＝2小節 × 10 → アウトロ2小節（声）。80 BPM で約74秒。
+- 曲の構成：イントロ（声）→ 1問 × 10 → アウトロ（声。音楽だけフェードアウト）。**約1分**。テンポに合わせて小節の数を変える（イントロ 2〜4・1問 1〜4・アウトロ 2〜6 小節。`src/music/edit/layout.js` の `planLayout`）。例：60 BPM → 15小節、90 BPM → 24小節、160 BPM → 40小節。
 
 ## 6. 原曲（うごてん → `compose`）
 
-原曲4曲は AI で作った MIDI（うごてんが作る）。`compose` が設計図の `baseSong` で1曲を選び、ほかの項目で編集する。
+原曲4曲は、AI で作った MP3 を `tools/mp3-to-midi` で MIDI にしたもの（うごてんが作る）。`compose` が設計図の `baseSong` で1曲を選び、ほかの項目で編集する。
 
 **ここに書いた決まりは、MIDI を編集する側（たいが）からの提案です。** 原曲を作るうごてんが決めます。作ってみて変えたいところがあれば、うごてんがこの節を直して PR で提案してください（編集のコードもそれに合わせます）。
 
 - ファイル：`public/songs/song1.mid`〜`song4.mid`
 - 拍子：4/4。曲の頭（0拍目）から小節を始める（弱起にしない）
-- 長さ：24小節（イントロ2 + 1問2小節 × 10 + アウトロ2）
+- 長さ：48小節（`compose` が、テンポに合わせて頭から必要な小節だけ使う。160 BPM で40小節前後）
 - トラック名：`melody`・`pad`・`bass`・`drums` のどれか（トラック名で見分けて編集する）
+  - 追加のトラック `keys`・`guitar`・`synth`・`sing` があってもよい（MP3 から細かく分けたパート。アレンジに使うため）。今の `midiToScore` は使わずに警告を出すだけ。名前は `src/music/parts.js` の見分け方に当たらないものにする
 - ドラム：チャンネル10。キック 36・スネア 38・クローズド・ハイハット 42（General MIDI）
+  - オープン・ハイハット 46・クラッシュ 49・タム 45 / 48 もあってよい（46 は今もハイハットとして鳴る。45・48・49 は今は鳴らない）
 - キー：曲の頭にテキストのメタイベント `key: D dorian` の形で書く（主音はシャープだけ）。なければ音から推定するが、関係調と取り違えることがある
 - テンポ：曲の頭にテンポを1つ入れる（途中で変えてもよい。変化は残したまま設計図の `bpm` に合わせる）
 
@@ -190,8 +192,10 @@ Score = {
   bpm: number,        // 曲の最初のテンポ（途中で変わることがある）
   duration: 秒,        // 余韻も含めた長さ
   timbre: number[],    // 設計図のまま
-  sound: { reverbDecay: 秒, reverbWet: 0〜1, padAttack: 秒, padRelease: 秒, padFilterHz: number },  // 設計図の breathiness から（soundFromBlueprint）
-  structure: [{ name: "intro" | "q1" … "q10" | "outro", start: 秒, end: 秒 }],
+  sound: { reverbDecay: 秒, reverbWet: 0〜1, padAttack: 秒, padRelease: 秒, padFilterHz: number,
+           melodyAttack: 秒, melodyRelease: 秒 },  // 設計図の breathiness から（soundFromBlueprint）
+  structure: [{ name: "intro" | "q1" … "q10" | "outro", start: 秒, end: 秒 }],  // 区間の長さは曲ごとに変わる（planLayout）
+  fade?: { start: 秒, end: 秒 },  // この間に音楽を 0 まで下げる（アウトロ）。声はフェードしない。なければフェードなし
   tracks: {
     voice:  [{ time, duration?, detune? }],   // duration がなければ最後まで（最大 10 秒）、detune がなければ元の高さ
     pad:    [{ time, notes: ["D4", "F4", "A4"], duration, velocity }],

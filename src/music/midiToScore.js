@@ -2,9 +2,11 @@
 // ここでは音を鳴らさない・ブラウザの機能を使わない（Node でも動く）。
 // 受け渡しの形は docs/interfaces.md の「6. 原曲」「7. 楽譜」。
 //
-// midiToScore(midi, blueprint) → { score, report }
+// midiToScore(midi, blueprint, layout?) → { score, report }
 //   midi      @tonejs/midi の Midi（うごてんが設計図で編集したもの）
 //   blueprint 設計図（timbre と、音の柔らかさ sound を楽譜に入れるため）
+//   layout    曲の構成の小節の数 { introBars, barsPerQuestion, outroBars, totalBars }（src/music/edit/layout.js の planLayout）。
+//             省くと DEFAULT_LAYOUT（イントロ2 → 1問2小節 × 10 → アウトロ2）
 //   score     楽譜（JSON にできる形）
 //   report    どのトラックを何にしたか・注意（画面表示・確認用）
 //
@@ -15,33 +17,38 @@
 //   kick    ドラムの 35・36 / snare 37〜40 / hat 42・44・46（General MIDI）。それ以外のドラムの音は使わない
 //   voice   曲の構成のイントロとアウトロの頭に、本人の声を1回ずつ置く。duration は付けない（声は最後まで流す。
 //           速いテンポでも名前などが途中で切れないように）。鳴らすかどうかは assets.voice があるかで決まる
-// 曲の構成（structure）: イントロ2小節 → 1問＝2小節 × 10 → アウトロ2小節（4/4 で数える。テンポの変化も反映した秒）
+// 曲の構成（structure）: layout の小節の数で intro → q1〜q10 → outro に区切る（4/4 で数える。テンポの変化も反映した秒）
+// フェード（fade）: アウトロの頭から終わりまでで、音楽を 0 まで下げる（sound.js）。声はフェードしない
+// 長さ（duration）: アウトロの終わり + FADE_TAIL 秒（声が長ければ renderSong が声の終わりまで伸ばす）
 import { normalizeBlueprint } from "../blueprint.js";
 import { round } from "../util.js";
 import { findParts, avgPitch } from "./parts.js";
 import { soundFromBlueprint } from "./soundSettings.js";
+import { DEFAULT_LAYOUT } from "./edit/layout.js";
 
 export const SECTION_NAMES = ["intro", ...Array.from({ length: 10 }, (_, i) => `q${i + 1}`), "outro"];
-export const SECTION_BARS = 2;
-const SONG_BARS = SECTION_NAMES.length * SECTION_BARS; // 24 小節
+const FADE_TAIL = 0.5; // 秒。フェードが終わってから曲を終えるまで
 const DRUMS = { kick: [35, 36], snare: [37, 38, 39, 40], hat: [42, 44, 46] };
 const MIN_DURATION = 0.01; // 秒。長さ 0 の音を鳴らさないように
 
-export function midiToScore(midi, input) {
+export function midiToScore(midi, input, layout = DEFAULT_LAYOUT) {
   const bp = normalizeBlueprint(input);
   const warnings = [];
   const barTicks = midi.header.ppq * 4;
   const sec = (ticks) => t(midi.header.ticksToSeconds(ticks));
 
-  // 曲の構成: 2小節ずつ区切って、秒に直す
-  const structure = SECTION_NAMES.map((name, i) => ({
-    name,
-    start: sec(i * SECTION_BARS * barTicks),
-    end: sec((i + 1) * SECTION_BARS * barTicks),
-  }));
+  // 曲の構成: layout の小節の数で区切って、秒に直す
+  const sectionBars = SECTION_NAMES.map((name) => (name === "intro" ? layout.introBars : name === "outro" ? layout.outroBars : layout.barsPerQuestion));
+  const songBars = sectionBars.reduce((a, b) => a + b, 0);
+  let barAt = 0;
+  const structure = SECTION_NAMES.map((name, i) => {
+    const section = { name, start: sec(barAt * barTicks), end: sec((barAt + sectionBars[i]) * barTicks) };
+    barAt += sectionBars[i];
+    return section;
+  });
   const endTick = Math.max(0, ...midi.tracks.flatMap((tr) => tr.notes.map((n) => n.ticks + n.durationTicks)));
   const bars = Math.ceil((endTick - midi.header.ppq / 4) / barTicks); // ノリ・揺らぎで16分音符までのはみ出しは数えない
-  if (bars !== SONG_BARS) warnings.push(`原曲が ${bars} 小節です（決まりは ${SONG_BARS} 小節）。曲の構成の区切りと音楽がずれます`);
+  if (bars !== songBars) warnings.push(`曲が ${bars} 小節です（曲の構成は ${songBars} 小節）。曲の構成の区切りと音楽がずれます`);
   const ts = midi.header.timeSignatures;
   if (ts.some((x) => x.timeSignature[0] !== 4 || x.timeSignature[1] !== 4)) warnings.push("原曲が 4/4 拍子ではないので、曲の構成の区切りがずれます");
 
@@ -71,24 +78,31 @@ export function midiToScore(midi, input) {
     tracks.voice.push({ time: structure.find((x) => x.name === name).start });
   }
 
-  // 長さ: 最後の音（または構成の最後）+ リバーブの余韻
+  // フェードと長さ: アウトロの間に音楽を消し、少し間をおいて終わる。終わりより後の音は鳴らさない
   const sound = soundFromBlueprint(bp);
-  const lastEnd = Math.max(
-    structure.at(-1).end,
-    ...Object.values(tracks).flat().map((e) => e.time + (e.duration ?? 0)),
-  );
+  const outro = structure.at(-1);
+  const fade = { start: outro.start, end: outro.end };
+  const duration = t(outro.end + FADE_TAIL);
+  for (const name of Object.keys(tracks)) {
+    if (name === "voice") continue;
+    tracks[name] = tracks[name]
+      .filter((e) => e.time < fade.end)
+      .map((e) => (e.duration === undefined ? e : { ...e, duration: t(Math.max(MIN_DURATION, Math.min(e.duration, duration - e.time))) }));
+  }
   const score = {
     bpm: Math.round(midi.header.tempos[0]?.bpm ?? 120),
-    duration: t(lastEnd + sound.reverbDecay),
+    duration,
     timbre: bp.timbre,
     sound,
     structure,
+    fade,
     tracks,
   };
   return {
     score,
     report: {
       bars,
+      layout: { introBars: layout.introBars, barsPerQuestion: layout.barsPerQuestion, outroBars: layout.outroBars, totalBars: songBars },
       melodyTrack: melody?.name ?? null,
       padTrack: parts.pad?.name ?? null,
       bassTrack: bass?.name ?? null,

@@ -9,6 +9,7 @@ import { soundFromBlueprint } from "../src/music/soundSettings.js";
 import { midiToScore } from "../src/music/midiToScore.js";
 import { renderSong } from "../src/music/render.js";
 import { toBlueprint } from "../src/input/toBlueprint.js";
+import { fitLength } from "../src/music/compose.js";
 
 const $ = (id) => document.getElementById(id);
 const grooveInputs = [...document.querySelectorAll(".groove")];
@@ -63,6 +64,13 @@ $("midiFile").addEventListener("change", async (e) => {
   const file = e.target.files[0];
   if (file) setOriginal(new Midi(await file.arrayBuffer()), file.name);
 });
+for (const b of document.querySelectorAll("button.song")) {
+  b.addEventListener("click", async () => {
+    const res = await fetch(`/songs/song${b.dataset.song}.mid`);
+    $("songRoot").value = ""; // キーは MIDI の "key: …" のテキストから読む
+    setOriginal(new Midi(await res.arrayBuffer()), `song${b.dataset.song}.mid`);
+  });
+}
 $("useSample").addEventListener("click", () => {
   $("songRoot").value = "D";
   $("songScale").value = "dorian";
@@ -89,7 +97,10 @@ function setOriginal(midi, label) {
 function update() {
   if (!original) return;
   const songKey = $("songRoot").value ? { root: $("songRoot").value, scale: $("songScale").value } : null;
-  edited = editMidiFromBlueprint(original, readBlueprint(), songKey);
+  // compose と同じ順: テンポに合わせて約1分になる小節の数を決め、頭からその小節だけにしてから編集する
+  const fitted = fitLength(original, readBlueprint());
+  layout = fitted.layout;
+  edited = editMidiFromBlueprint(fitted.midi, readBlueprint(), songKey);
   const r = edited.report;
   const hatName = { 4: "4分音符（間引く）", 8: "8分音符", 16: "16分音符（細かく）" };
   const s = r.sound;
@@ -102,7 +113,8 @@ function update() {
     ["ドラムの細かさ（ハイハット）", r.hats ? `${hatName[r.hats.division]}（${r.hats.before} → ${r.hats.after} 音）` : "原曲のまま"],
     ["ノリ（4拍のズレ、ミリ秒）", r.groove ? r.groove.map((s) => Math.round(s * 1000)).join(" / ") : "なし（原曲のまま）"],
     ["揺らぎ", r.humanize || "なし"],
-    ["長さ", `${original.duration.toFixed(1)} 秒 → ${edited.midi.duration.toFixed(1)} 秒`],
+    ["曲の長さ（小節）", `イントロ ${layout.introBars}・1問 ${layout.barsPerQuestion} × 10・アウトロ ${layout.outroBars} ＝ ${layout.totalBars} 小節（見込み ${layout.estimatedSec} 秒）`],
+    ["長さ", `原曲 ${original.duration.toFixed(1)} 秒 → 使う所を編集して ${edited.midi.duration.toFixed(1)} 秒`],
     ["注意", r.warnings.join(" / ") || "なし"],
   ];
   $("result").replaceChildren(
@@ -119,9 +131,10 @@ function update() {
 
 // ── 楽譜（MIDI → Score） ─────────────────────────
 let score = null;
+let layout = null; // 曲の長さの小節の数（fitLength）
 
 function showScore() {
-  const result = midiToScore(edited.midi, readBlueprint());
+  const result = midiToScore(edited.midi, readBlueprint(), layout);
   score = result.score;
   const r = result.report;
   const c = r.counts;
@@ -130,6 +143,7 @@ function showScore() {
     ["トラックの割り当て", `melody ← ${r.melodyTrack ?? "なし"} / pad ← ${r.padTrack ?? "なし"} / bass ← ${r.bassTrack ?? "なし"} / ドラム ← ${r.drumTracks.join("・") || "なし"}`],
     ["音の数", `melody ${c.melody}・pad ${c.pad}（和音）・bass ${c.bass}・kick ${c.kick}・snare ${c.snare}・hat ${c.hat}・voice ${c.voice}`],
     ["曲の構成（秒）", score.structure.map((s) => `${s.name} ${s.start}`).join(" / ")],
+    ["フェードアウト（音楽だけ）", score.fade ? `${score.fade.start} → ${score.fade.end} 秒（声は残る）` : "なし"],
     ["声を置く所", score.tracks.voice.map((v) => `${v.time} 秒から${v.duration ? ` ${v.duration} 秒` : "最後まで（最大 10 秒）"}`).join("、")],
     ["音の柔らかさ（sound）", `リバーブ ${score.sound.reverbDecay} 秒・${score.sound.reverbWet} / パッド ${score.sound.padAttack}・${score.sound.padRelease} 秒・${score.sound.padFilterHz} Hz`],
     ["注意", r.warnings.join(" / ") || "なし"],
@@ -241,7 +255,8 @@ $("downloadScore").addEventListener("click", () => {
 async function playScore(s) {
   stopPlaying?.();
   await Tone.start();
-  const reverb = new Tone.Reverb({ decay: s.sound.reverbDecay, wet: s.sound.reverbWet }).toDestination();
+  const fadeGain = new Tone.Gain(1).toDestination();
+  const reverb = new Tone.Reverb({ decay: s.sound.reverbDecay, wet: s.sound.reverbWet }).connect(fadeGain);
   const out = new Tone.Limiter(-1).connect(reverb);
   const melody = new Tone.Synth({ oscillator: { type: "custom", partials: s.timbre }, volume: -10 }).connect(out);
   const bass = new Tone.Synth({ oscillator: { type: "sine" }, volume: -6 }).connect(out);
@@ -254,9 +269,13 @@ async function playScore(s) {
   const kick = new Tone.MembraneSynth({ volume: -6 }).connect(out);
   const snare = new Tone.NoiseSynth({ envelope: { decay: 0.15, sustain: 0 }, volume: -16 }).connect(out);
   const hat = new Tone.MetalSynth({ envelope: { decay: 0.05 }, volume: -30 }).connect(out);
-  const synths = [melody, bass, pad, padFilter, kick, snare, hat, out, reverb];
+  const synths = [melody, bass, pad, padFilter, kick, snare, hat, out, reverb, fadeGain];
 
   const start = Tone.now() + 0.2;
+  if (s.fade) {
+    fadeGain.gain.setValueAtTime(1, start + s.fade.start);
+    fadeGain.gain.exponentialRampToValueAtTime(0.0001, start + s.fade.end);
+  }
   for (const e of s.tracks.melody) melody.triggerAttackRelease(e.note, e.duration, start + e.time, e.velocity);
   for (const e of s.tracks.bass) bass.triggerAttackRelease(e.note, e.duration, start + e.time, e.velocity);
   for (const e of s.tracks.pad) pad.triggerAttackRelease(e.notes, e.duration, start + e.time, e.velocity);
@@ -290,6 +309,10 @@ async function play(midi, sound) {
   const synths = [lead, pad, padFilter, kick, hit, out, reverb];
 
   const start = Tone.now() + 0.2;
+  if (s.fade) {
+    fadeGain.gain.setValueAtTime(1, start + s.fade.start);
+    fadeGain.gain.exponentialRampToValueAtTime(0.0001, start + s.fade.end);
+  }
   const parts = findParts(midi);
   // ドラムは全トラックをまとめ、同じ時刻の音は1つにする（同じ時刻に2回鳴らすと Tone.js がエラーになる）
   const kicks = new Set(), hits = new Set();
