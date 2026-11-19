@@ -3,7 +3,9 @@
 import * as Tone from "tone";
 import { Midi } from "@tonejs/midi";
 import { NOTES, SCALES, SAMPLE_BLUEPRINT, defaultBlueprint } from "../src/blueprint.js";
-import { editMidiFromBlueprint, isDrum, findParts, soundFromBlueprint } from "../src/music/edit/blueprintEdit.js";
+import { editMidiFromBlueprint } from "../src/music/edit/blueprintEdit.js";
+import { isDrum, findParts } from "../src/music/parts.js";
+import { soundFromBlueprint } from "../src/music/soundSettings.js";
 import { midiToScore } from "../src/music/midiToScore.js";
 import { renderSong } from "../src/music/render.js";
 import { toBlueprint } from "../src/input/toBlueprint.js";
@@ -25,6 +27,7 @@ function readBlueprint() {
   return {
     ...defaultBlueprint(),
     root: $("bpRoot").value,
+    rootFromVoice: $("bpRootFromVoice").checked,
     melodyRange: Number($("bpMelodyRange").value),
     breathiness: Number($("bpBreathiness").value),
     bpm: Number($("bpBpm").value),
@@ -36,6 +39,7 @@ function readBlueprint() {
 }
 function writeBlueprint(bp) {
   $("bpRoot").value = bp.root;
+  $("bpRootFromVoice").checked = bp.rootFromVoice;
   $("bpMelodyRange").value = bp.melodyRange;
   $("bpBreathiness").value = bp.breathiness;
   $("bpBpm").value = bp.bpm;
@@ -126,7 +130,7 @@ function showScore() {
     ["トラックの割り当て", `melody ← ${r.melodyTrack ?? "なし"} / pad ← ${r.padTrack ?? "なし"} / bass ← ${r.bassTrack ?? "なし"} / ドラム ← ${r.drumTracks.join("・") || "なし"}`],
     ["音の数", `melody ${c.melody}・pad ${c.pad}（和音）・bass ${c.bass}・kick ${c.kick}・snare ${c.snare}・hat ${c.hat}・voice ${c.voice}`],
     ["曲の構成（秒）", score.structure.map((s) => `${s.name} ${s.start}`).join(" / ")],
-    ["声を置く所", score.tracks.voice.map((v) => `${v.time} 秒から ${v.duration} 秒`).join("、")],
+    ["声を置く所", score.tracks.voice.map((v) => `${v.time} 秒から${v.duration ? ` ${v.duration} 秒` : "最後まで（最大 10 秒）"}`).join("、")],
     ["音の柔らかさ（sound）", `リバーブ ${score.sound.reverbDecay} 秒・${score.sound.reverbWet} / パッド ${score.sound.padAttack}・${score.sound.padRelease} 秒・${score.sound.padFilterHz} Hz`],
     ["注意", r.warnings.join(" / ") || "なし"],
   ];
@@ -191,7 +195,7 @@ $("makeBlueprint").addEventListener("click", async () => {
   writeBlueprint(blueprint);
   const s = blueprint.sources;
   $("materialInfo").textContent =
-    `設計図を作りました（声 ${s.voice ? "○" : voiceWav ? "×（高さが取れない）" : "なし"}` +
+    `設計図を作りました（声 ${s.voice ? (blueprint.rootFromVoice ? "○" : "○（高さが取れないのでキーは原曲のまま）") : voiceWav ? "×（声が入っていない）" : "なし"}` +
     `・叩く ${s.taps ? "○" : tapIntervals ? "×（少なすぎる）" : "なし"}・心拍 ${s.heart ? "○" : "なし"}` +
     `${voiceBuffer ? `・声の音 ${voiceBuffer.duration.toFixed(1)} 秒` : ""}）`;
 });

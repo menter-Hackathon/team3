@@ -13,11 +13,13 @@
 //   pad     名前が pad / chord / string のトラック。同じ時刻の音をまとめて和音にする
 //   bass    名前が bass のトラック（なければ残りで一番低いトラック）。同じ時刻に音が重なれば一番低い音
 //   kick    ドラムの 35・36 / snare 37〜40 / hat 42・44・46（General MIDI）。それ以外のドラムの音は使わない
-//   voice   曲の構成のイントロとアウトロの頭に、本人の声を1回ずつ置く（鳴らすかどうかは assets.voice があるかで決まる）
+//   voice   曲の構成のイントロとアウトロの頭に、本人の声を1回ずつ置く。duration は付けない（声は最後まで流す。
+//           速いテンポでも名前などが途中で切れないように）。鳴らすかどうかは assets.voice があるかで決まる
 // 曲の構成（structure）: イントロ2小節 → 1問＝2小節 × 10 → アウトロ2小節（4/4 で数える。テンポの変化も反映した秒）
 import { normalizeBlueprint } from "../blueprint.js";
 import { round } from "../util.js";
-import { findParts, soundFromBlueprint } from "./edit/blueprintEdit.js";
+import { findParts, avgPitch } from "./parts.js";
+import { soundFromBlueprint } from "./soundSettings.js";
 
 export const SECTION_NAMES = ["intro", ...Array.from({ length: 10 }, (_, i) => `q${i + 1}`), "outro"];
 export const SECTION_BARS = 2;
@@ -64,10 +66,9 @@ export function midiToScore(midi, input) {
     ...drums(parts.drums, warnings),
   };
 
-  // 声: イントロとアウトロの頭に置き、その区間の長さで止める
+  // 声: イントロとアウトロの頭に置き、最後まで流す（声の長さは楽譜では分からないので、renderSong が書き出しを声の終わりまで伸ばす）
   for (const name of ["intro", "outro"]) {
-    const s = structure.find((x) => x.name === name);
-    tracks.voice.push({ time: s.start, duration: t(s.end - s.start) });
+    tracks.voice.push({ time: structure.find((x) => x.name === name).start });
   }
 
   // 長さ: 最後の音（または構成の最後）+ リバーブの余韻
@@ -148,6 +149,5 @@ function groupByTime(notes) {
 }
 
 const t = (s) => round(s, 3); // 秒はミリ秒まで
-const avgPitch = (tr) => tr.notes.reduce((a, n) => a + n.midi, 0) / tr.notes.length;
 const maxBy = (list, score) => list.reduce((best, x) => (best === null || score(x) > score(best) ? x : best), null);
 const minBy = (list, score) => list.reduce((best, x) => (best === null || score(x) < score(best) ? x : best), null);

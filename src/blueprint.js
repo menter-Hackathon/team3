@@ -24,6 +24,7 @@ export function defaultBlueprint() {
     baseSong: 1, // 原曲4曲のどれか（1〜4）
     bpm: 90,
     root: "C",
+    rootFromVoice: false, // root を声の高さから決めたか（false なら原曲のキーのまま）
     scale: "dorian",
     density: 0.5,
     groove: [0, 0, 0, 0],
@@ -56,6 +57,7 @@ export function normalizeBlueprint(input = {}) {
     baseSong: Math.round(num(input.baseSong, base.baseSong, 1, 4)),
     bpm: Math.round(num(input.bpm, base.bpm, 60, 160)),
     root: NOTES.includes(input.root) ? input.root : base.root,
+    rootFromVoice: Boolean(input.rootFromVoice),
     scale: input.scale in SCALES ? input.scale : base.scale,
     density: num(input.density, base.density, 0, 1),
     groove: base.groove.map((d, i) => num(input.groove?.[i], d, -0.05, 0.05)),
@@ -80,6 +82,7 @@ export const SAMPLE_BLUEPRINT = normalizeBlueprint({
   baseSong: 2,
   bpm: 78,
   root: "D",
+  rootFromVoice: true,
   scale: "dorian",
   density: 0.7,
   groove: [0, 0.03, -0.02, 0.05],

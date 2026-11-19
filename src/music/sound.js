@@ -12,7 +12,7 @@
 //   声の detune（音の高さを変える）はまだ使わない（GrainPlayer で楽器にするのは未定）
 import * as Tone from "tone";
 import { defaultBlueprint } from "../blueprint.js";
-import { soundFromBlueprint } from "./edit/blueprintEdit.js";
+import { soundFromBlueprint } from "./soundSettings.js";
 
 const KNOWN_TRACKS = ["voice", "pad", "bass", "melody", "kick", "snare", "hat"];
 const DEFAULT_SOUND = soundFromBlueprint(defaultBlueprint()); // 楽譜に sound がないとき
@@ -20,6 +20,8 @@ const DEFAULT_TIMBRE = defaultBlueprint().timbre;
 
 // 音量（dB）。楽器ごとのバランス
 const VOLUME = { melody: -9, pad: -17, bass: -8, kick: -4, snare: -14, hat: -26, voice: 0 };
+const MAX_POLYPHONY = 64; // 同時に鳴らせる音の数（既定の 32 だと、消え方の長いパッドで音が抜けることがある）
+export const MAX_VOICE_SEC = 10; // 声を流す最大の長さ（秒）。長すぎる録音が曲の中ずっと鳴らないように
 
 export async function scheduleSong(score, assets = { voice: null }) {
   const sound = { ...DEFAULT_SOUND, ...(score.sound ?? {}) };
@@ -39,6 +41,7 @@ export async function scheduleSong(score, assets = { voice: null }) {
     envelope: { attack: 0.01, decay: 0.2, sustain: 0.6, release: 0.4 },
     volume: VOLUME.melody,
   }).connect(reverb);
+  melody.maxPolyphony = MAX_POLYPHONY;
 
   // パッド: 息っぽい声ほど、ゆっくり立ち上がり、長く残り、こもった音にする
   const padFilter = new Tone.Filter(sound.padFilterHz, "lowpass").connect(reverb);
@@ -47,6 +50,7 @@ export async function scheduleSong(score, assets = { voice: null }) {
     envelope: { attack: sound.padAttack, decay: 0.3, sustain: 0.8, release: sound.padRelease },
     volume: VOLUME.pad,
   }).connect(padFilter);
+  pad.maxPolyphony = MAX_POLYPHONY;
 
   const bass = new Tone.MonoSynth({
     oscillator: { type: "triangle" },
@@ -70,12 +74,12 @@ export async function scheduleSong(score, assets = { voice: null }) {
   for (const e of tracks.snare ?? []) snare.triggerAttackRelease(0.15, e.time, e.velocity);
   for (const e of tracks.hat ?? []) hat.triggerAttackRelease(0.04, e.time, e.velocity);
 
-  // 声: イントロとアウトロで本人の声をそのまま流す（duration がなければ最後まで）
+  // 声: イントロとアウトロで本人の声をそのまま流す（duration がなければ最後まで。ただし MAX_VOICE_SEC 秒まで）
   if (assets?.voice) {
     const voiceGain = new Tone.Gain(Tone.dbToGain(VOLUME.voice)).connect(reverb);
     for (const e of tracks.voice ?? []) {
       const player = new Tone.Player(assets.voice).connect(voiceGain);
-      player.start(e.time, 0, e.duration);
+      player.start(e.time, 0, e.duration ?? Math.min(assets.voice.duration, MAX_VOICE_SEC));
     }
   }
 

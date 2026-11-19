@@ -87,7 +87,9 @@ UI（src/main.js）が順番に呼ぶ
 - `src/sensor/heart.js`（センサー・任意）：`connectHeart(url)` → `HeartConnection | null`
 - `src/sensor/face.js`（センサー・任意）：`captureFace()` → `Face | null`
 - `src/music/compose.js`（出力。原曲の選択・編集＝うごてん、楽譜＝たいが）：`compose(blueprint)` → `Promise<Score>`（原曲の MIDI を読むので async）
-- `src/music/edit/blueprintEdit.js`（出力・うごてん）：`editMidiByBlueprint(midi, blueprint, songKey)` → `{ midi, report }`・`soundFromBlueprint(blueprint)` → 音の柔らかさの設定
+- `src/music/edit/blueprintEdit.js`（出力・うごてん）：`editMidiByBlueprint(midi, blueprint, songKey)` → `{ midi, report }`
+- `src/music/parts.js`（出力・共通。変えるときは2人で相談）：`findParts(midi)` → `{ pitched, melody, pad, drums }`・`isDrum(track)`（MIDI のトラックの見分け）
+- `src/music/soundSettings.js`（出力・共通。変えるときは2人で相談）：`soundFromBlueprint(blueprint)` → 音の柔らかさの設定（楽譜の `sound`・MIDI の CC・sound.js が同じ数字を使う）
 - `src/music/midiToScore.js`（出力・たいが）：`midiToScore(midi, blueprint)` → `{ score, report }`
 - `src/music/sound.js`（出力・たいが）：`scheduleSong(score, assets)` → `Promise`（楽器を作って予約する。リバーブの準備ができたら終わる）
 - `src/music/render.js`（出力・たいが）：`renderSong(score, assets)` → `Promise<Blob>`（WAV）
@@ -128,6 +130,7 @@ HeartConnection = { bpm: number | null（今の値。まだ届いていなけれ
   "baseSong": 2,
   "bpm": 78,
   "root": "D",
+  "rootFromVoice": true,
   "scale": "dorian",
   "density": 0.7,
   "groove": [0, 0.03, -0.02, 0.05],
@@ -148,7 +151,8 @@ HeartConnection = { bpm: number | null（今の値。まだ届いていなけれ
 | `version` | 1 | — | — | 設計図の形の版 |
 | `baseSong`（追加） | 1〜4 の整数 | 質問 | うごてん | 原曲4曲のどれを使うか |
 | `bpm` | 60〜160 の整数 | 叩いた速さ。心拍があれば心拍に寄せる | たいが | 曲のテンポ |
-| `root` | `"C"`〜`"B"`（シャープだけ） | **声の高さ**（`pitchNote`） | たいが | 原曲をこのキーに移調する |
+| `root` | `"C"`〜`"B"`（シャープだけ） | **声の高さ**（`pitchNote`） | たいが | 原曲をこのキーに移調する（`rootFromVoice` が true のときだけ） |
+| `rootFromVoice`（追加） | 真偽値 | 声の高さが取れて `root` を決めたか | たいが | false なら、声があっても原曲のキーのまま（ささやき声など高さが取れない声のとき） |
 | `scale` | `phrygian`・`aeolian`・`dorian`・`mixolydian`・`ionian`・`lydian`（暗い順） | 質問 | うごてん | 質問の部分で決めて使う（原曲の選択・音階 など。使い方はうごてんが決める） |
 | `density` | 0〜1 | 質問 | うごてん | 音の多さ |
 | `groove` | 4拍それぞれ秒（各 ±0.05） | 叩いたリズムのズレ | たいが | 音の時刻を拍の位置に合わせてずらす（ノリ） |
@@ -158,7 +162,7 @@ HeartConnection = { bpm: number | null（今の値。まだ届いていなけれ
 | `tempoDrift`（追加） | 0.9〜1.1 | 叩く速さの前半と後半の比 | たいが | テンポの変化（最後のテンポ ÷ 最初のテンポ） |
 | `timbre` | 1〜16個、各 0〜1 | 顔の輪郭（任意）。なければ既定の音色 | — | 音色（倍音の強さ） |
 | `sections` | 必ず10個 | 質問（1問ごと） | うごてん | 1問ごとの区間（2小節）の `q`（1〜10）・盛り上がり `energy`・明るさ `brightness`・迷い `hesitation`（各 0〜1） |
-| `sources` | 真偽値 | どの材料が取れたか | 全員 | 画面の表示・AI の曲名・確認。`voice` がなければキー・メロディの音域・音の柔らかさは原曲のまま、`taps`・`heart` がなければテンポは原曲のまま、`taps` がなければテンポの変化・ノリ・ドラム・揺らぎも原曲のまま |
+| `sources` | 真偽値 | どの材料が取れたか | 全員 | 画面の表示・AI の曲名・確認。`voice` は声が録れていれば true（高さが取れなくても true。キーを変えるかは `rootFromVoice`）。`voice` がなければキー・メロディの音域・音の柔らかさは原曲のまま、`taps`・`heart` がなければテンポは原曲のまま、`taps` がなければテンポの変化・ノリ・ドラム・揺らぎも原曲のまま |
 
 - （追加）の項目は、既定値があって、なくても動く追加なので `version` は 1 のまま（「11. 形を変えるとき」）。`src/blueprint.js` の `defaultBlueprint()`・`normalizeBlueprint()` にも足す。
 - 足りない材料の所は既定値（`defaultBlueprint()`）のままにする。
@@ -183,13 +187,13 @@ HeartConnection = { bpm: number | null（今の値。まだ届いていなけれ
 
 ```ts
 Score = {
-  bpm: number,
+  bpm: number,        // 曲の最初のテンポ（途中で変わることがある）
   duration: 秒,        // 余韻も含めた長さ
   timbre: number[],    // 設計図のまま
   sound: { reverbDecay: 秒, reverbWet: 0〜1, padAttack: 秒, padRelease: 秒, padFilterHz: number },  // 設計図の breathiness から（soundFromBlueprint）
   structure: [{ name: "intro" | "q1" … "q10" | "outro", start: 秒, end: 秒 }],
   tracks: {
-    voice:  [{ time, duration?, detune? }],   // duration がなければ最後まで、detune がなければ元の高さ
+    voice:  [{ time, duration?, detune? }],   // duration がなければ最後まで（最大 10 秒）、detune がなければ元の高さ
     pad:    [{ time, notes: ["D4", "F4", "A4"], duration, velocity }],
     bass:   [{ time, note: "D2", duration, velocity }],
     melody: [{ time, note: "A4", duration, velocity }],
@@ -207,12 +211,14 @@ assets = { voice: AudioBuffer | null }
 - 各トラックの中は `time` の小さい順に並べる。同じトラックで同じ `time` を2回使わない（Tone.js でエラーになる）。
 - `time` は 0 以上、`duration` 未満。
 - `structure` は、映像と画面が「曲の今どこか」を知るために使う。
+- テンポは曲の途中で変わることがある（原曲のテンポの変化・設計図の `tempoDrift`）。`bpm` は最初のテンポだけなので、`bpm` から拍や区間の時刻を計算しない。区間に合わせるときは `structure` の秒（テンポの変化も入っている）を使う。
 
 ## 8. 出力（WAV・映像）
 
-- `renderSong(score, assets)` → WAV の `Blob`（`audio/wav`、44.1kHz・16bit・ステレオ）。一番大きい音が −1 dB になるように曲全体の音量をそろえる（音割れを防ぐ）。
+- `renderSong(score, assets)` → WAV の `Blob`（`audio/wav`、44.1kHz・16bit・ステレオ）。一番大きい音が −1 dB になるように曲全体の音量をそろえる（音割れを防ぐ）。書き出す長さは `duration`。最後まで流す声がそれより長く続くときは、声の終わりまで伸ばす（アウトロの声が途中で切れないように）。
 - 保存するファイル名は `rashisa-YYYYMMDD-HHMM.wav`。名前など個人の情報は入れない。
 - 画面ではこの WAV を `<audio>` で流す（聞いた曲＝持ち帰る曲）。
+- `renderSong` の書き出し中（`Tone.Offline`、数秒〜十数秒）は、Tone.js の全体の設定（context）が書き出し用に切り替わる。書き出しが終わるまで、ほかの音を鳴らしたり Tone.js の楽器・エフェクトを作ったりしない（書き出し用の側に作られて聞こえず、曲に混ざることもある）。UI は書き出し中の画面にしておく。
 - `drawVisual(container, { blueprint, score, audio })` → `{ remove() }`。`audio` は再生中の `<audio>`。`audio.currentTime` と `score.structure` で、曲の今どこかが分かる。
 
 ## 9. サーバー・アプリとのやり取り

@@ -4,24 +4,33 @@
 // renderSong(score, assets) → Promise<Blob>（audio/wav、44.1kHz・16bit・ステレオ）
 //   曲が作れないときは例外を投げる（UI がエラー画面を出す）
 //   Tone.Offline で、曲の長さを待たずに一気に書き出す（Tone.start() は要らない）
+//   長さは score.duration。声（duration なし＝最後まで）がそれより長く続くときは、声の終わりまで伸ばす
 //   画面ではこの WAV を <audio> で流すと、「聞いた曲」と「持ち帰る曲」が同じになる
 import * as Tone from "tone";
-import { scheduleSong } from "./sound.js";
+import { scheduleSong, MAX_VOICE_SEC } from "./sound.js";
 import { audioBufferToWav } from "./wav.js";
 
 export const SAMPLE_RATE = 44100;
 const CHANNELS = 2;
 const MAX_DURATION = 180; // 秒。楽譜がおかしくて長すぎるときに止める
+const VOICE_TAIL = 1.5; // 秒。最後の声のあとに残す余韻
 
 export async function renderSong(score, assets = { voice: null }) {
   if (!score || !score.tracks) throw new Error("楽譜がありません");
   if (!(score.duration > 0) || score.duration > MAX_DURATION) throw new Error(`曲の長さがおかしいです（${score.duration} 秒）`);
   const rendered = await Tone.Offline(async () => {
     await scheduleSong(score, assets);
-  }, score.duration, CHANNELS, SAMPLE_RATE);
+  }, songLength(score, assets), CHANNELS, SAMPLE_RATE);
   const buffer = rendered.get();
   normalizePeak(buffer);
   return audioBufferToWav(buffer);
+}
+
+// 書き出す長さ: 楽譜の長さ。声が最後まで流れきらないときは、声の終わり + 余韻まで伸ばす（アウトロの声が途中で切れないように）
+export function songLength(score, assets) {
+  const voiceSec = Math.min(assets?.voice?.duration ?? 0, MAX_VOICE_SEC);
+  const voiceEnd = Math.max(0, ...(voiceSec ? score.tracks.voice ?? [] : []).map((e) => e.time + (e.duration ?? voiceSec) + VOICE_TAIL));
+  return Math.max(score.duration, voiceEnd);
 }
 
 // 一番大きい音が −1 dB（0.89）になるように、曲全体の音量をそろえる。

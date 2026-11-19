@@ -87,6 +87,8 @@ src/sensor/             センサー（任意）: heart.js（心拍）・face.js
 src/music/compose.js    出力: 設計図 → 原曲を選ぶ・MIDI を編集（うごてん）→ 楽譜（たいが）
 src/music/edit/         出力: 原曲の MIDI を設計図で編集する（うごてん）
 src/music/midiToScore.js 出力: MIDI → 楽譜（たいが）
+src/music/parts.js      出力・共通: MIDI のトラックの見分け（MIDI の編集と楽譜の両方が使う）
+src/music/soundSettings.js 出力・共通: 設計図 → 音の柔らかさの設定（楽譜・音・MIDI の CC が使う）
 src/music/sound.js      出力: 楽器・音色・エフェクト・音量
 src/music/render.js     出力: 楽譜 → WAV（Tone.Offline）。wav.js が WAV 形式に変換
 src/visual/sketch.js    映像（p5.js）
