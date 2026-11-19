@@ -1,0 +1,25 @@
+{
+  "sourceDir": "~/Downloads/mp3",
+  "defaults": {
+    "grid": 4,
+    "minNoteBeats": 0.125,
+    "minVelocity": 0.18,
+    "padMaxVoices": 6,
+    "melodyMin": 55,
+    "onsetThreshold": 0.5,
+    "frameThreshold": 0.3,
+    "drumDelta": 0.05,
+    "melody": "auto",
+    "pad": "auto",
+    "startBar": null,
+    "bpm": null,
+    "downbeatSec": null,
+    "key": null
+  },
+  "songs": {
+    "song1": { "source": "輝く瞬間.mp3" },
+    "song2": { "source": "Club Ambience.mp3" },
+    "song3": { "source": "Dramatic Arc.mp3" },
+    "song4": { "source": "Syncopated Beat.mp3" }
+  }
+}
