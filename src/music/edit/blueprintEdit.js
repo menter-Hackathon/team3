@@ -1,12 +1,12 @@
-// 【出力・たいが】設計図（Blueprint）→ 原曲の MIDI を編集する。
+// 【出力・うごてん】設計図（Blueprint）→ 原曲の MIDI を編集する。
 // ここでは音を鳴らさない・ブラウザの機能を使わない（Node でも動く）。材料（WAV・叩いた間隔）は見ず、設計図だけを使う。
 // 受け渡しの形は docs/interfaces.md の「5. 設計図」「6. 原曲」。
 //
 // 編集の順番と、使う設計図の項目:
 //   声（sources.voice があるとき）
-//     1. 移調          root         原曲を、このキーに移調する（音階は原曲のまま。ドラムは移調しない）
+//     1. 移調          root         原曲を、このキーに移調する（rootFromVoice が true のときだけ。音階は原曲のまま。ドラムは移調しない）
 //     2. メロディの音域 melodyRange  真ん中の音からの距離を 0.6〜1.4 倍にし、音階の音に寄せる
-//     3. 音の柔らかさ   breathiness  リバーブ・パッドの設定を CC として曲の頭に書く（鳴らす側は soundFromBlueprint を使う）
+//     3. 音の柔らかさ   breathiness  リバーブ・パッドの設定を CC として曲の頭に書く（数字は src/music/soundSettings.js の soundFromBlueprint。鳴らす側と同じ）
 //   叩く（sources.taps があるとき。4/4 拍子の曲だけ）
 //     4. ドラムの細かさ stability・bpm  ハイハットを 4分・8分・16分で刻み直す（原曲でハイハットが鳴っていた小節だけ）
 //   テンポ（sources.taps か sources.heart があるとき）
@@ -23,11 +23,12 @@
 //   report    何をしたか（画面表示・確認用）
 import { NOTES, SCALES, normalizeBlueprint } from "../../blueprint.js";
 import { clamp, median, round, seededRandom, hashString } from "../../util.js";
+import { findParts, isDrum } from "../parts.js";
+import { soundFromBlueprint } from "../soundSettings.js";
 
 const RANGE_MIN_FACTOR = 0.6; // melodyRange 0 のときのメロディの音域の倍率
 const RANGE_MAX_FACTOR = 1.4; // melodyRange 1 のとき
 const RANGE_MARGIN = 7; // 音域を広げても、原曲のメロディの一番低い・高い音から 7 半音までに収める
-const DEFAULT_BREATHINESS = 0.3;
 const CLOSED_HAT = 42; // General MIDI のクローズド・ハイハット
 const HUMANIZE_TIME_SEC = 0.02; // 揺らぎ 1 のとき、音の時刻を最大 ±20ms ずらす
 const HUMANIZE_VELOCITY = 0.12; // 揺らぎ 1 のとき、音の強さを最大 ±0.12 変える
@@ -49,9 +50,10 @@ export function editMidiByBlueprint(source, input, songKey = null) {
   const key = normalizeKey(songKey) ?? keyFromText(midi) ?? keyFromHeader(midi) ?? estimateKey(midi);
   if (key.estimated) warnings.push("原曲のキーを音の分布から推定しました。曲ごとのキーを渡すと確実です");
 
-  // 1. 移調: 設計図の root をキーにする。上下の近いほうへ（−6〜+5 半音）
+  // 1. 移調: 設計図の root をキーにする。上下の近いほうへ（−6〜+5 半音）。
+  //    声の高さが取れなかったとき（rootFromVoice が false）は、声があっても原曲のキーのまま
   let shift = 0;
-  if (useVoice) {
+  if (useVoice && bp.rootFromVoice) {
     shift = (NOTES.indexOf(bp.root) - NOTES.indexOf(key.root) + 12) % 12;
     if (shift > 5) shift -= 12;
     for (const track of parts.pitched) for (const note of track.notes) note.midi = clamp(note.midi + shift, 0, 127);
@@ -192,22 +194,9 @@ export function editMidiFromBlueprint(source, blueprint, songKey = null) {
   return { midi, bytes: midi.toArray(), report };
 }
 
-// ── 音の柔らかさ（鳴らす側 sound.js もこれを使う） ─────────────
+// ── 音の柔らかさ ─────────────────────────────────
 
-// 設計図 → リバーブとパッドの設定（Tone.js でそのまま使える数字）。声がなければ既定の息っぽさ
-export function soundFromBlueprint(input) {
-  const bp = normalizeBlueprint(input);
-  const b = bp.sources.voice ? bp.breathiness : DEFAULT_BREATHINESS;
-  return {
-    reverbDecay: round(lerp(1.5, 6, b)), // 秒（Tone.Reverb の decay）
-    reverbWet: round(lerp(0.15, 0.5, b)), // 0〜1（Tone.Reverb の wet）
-    padAttack: round(lerp(0.1, 1.5, b)), // 秒
-    padRelease: round(lerp(0.8, 3, b)), // 秒
-    padFilterHz: Math.round(4000 * Math.pow(900 / 4000, b)), // ローパスの周波数（耳の感じ方に合わせて対数で補間）
-  };
-}
-
-// 音の設定 → MIDI の CC の値（0〜1。@tonejs/midi が 0〜127 にする）。数字の出どころを soundFromBlueprint の1か所にするため
+// 音の設定（soundFromBlueprint、src/music/soundSettings.js）→ MIDI の CC の値（0〜1。@tonejs/midi が 0〜127 にする）。数字の出どころを soundFromBlueprint の1か所にするため
 function soundToCC(sound) {
   return {
     reverb: sound.reverbWet,
@@ -217,32 +206,8 @@ function soundToCC(sound) {
   };
 }
 
-// ── トラックの見分け ───────────────────────────────
-
-// ドラム: チャンネル10（instrument.percussion）か、名前に drum / perc を含む
-export function isDrum(track) {
-  return track.instrument.percussion || track.channel === 9 || /drum|perc/i.test(track.name);
-}
-
-// メロディ: 名前に melody / lead / vocal。なければ和音でないトラックのうち平均の音が一番高いもの
-// パッド: 名前に pad / chord / string。メロディとパッドが同じトラックになるときは、メロディなしとする
-export function findParts(midi) {
-  const tracks = midi.tracks.filter((t) => t.notes.length);
-  const pitched = tracks.filter((t) => !isDrum(t));
-  const byName = (re) => pitched.find((t) => re.test(t.name)) ?? null;
-  const pad = byName(/pad|chord|string/i);
-  const avg = (t) => t.notes.reduce((a, n) => a + n.midi, 0) / t.notes.length;
-  const melody = byName(/melody|lead|vocal/i) ?? maxBy(pitched.filter((t) => t !== pad && !isChordal(t)), avg);
-  return { pitched, melody: melody === pad ? null : melody, pad, drums: tracks.filter(isDrum) };
-}
-
-// 同じ時刻に2つ以上の音がある割合が 3 割を超えるトラックは和音のトラック
-function isChordal(track) {
-  const count = new Map();
-  for (const n of track.notes) count.set(n.ticks, (count.get(n.ticks) ?? 0) + 1);
-  const stacked = track.notes.filter((n) => count.get(n.ticks) > 1).length;
-  return stacked / track.notes.length > 0.3;
-}
+// ── 小さな判定 ──────────────────────────────────
+// トラックの見分け（findParts・isDrum）は src/music/parts.js（楽譜の側と共通）
 
 // ゆっくり安定して叩く人は細かく（16分）、バラつきの大きい人は間引く（4分）、それ以外は 8分
 function hatDivision(bpm, stability) {
