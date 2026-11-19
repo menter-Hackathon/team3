@@ -221,7 +221,8 @@ def build_midi(cfg, analysis, notes, db):
         pitches = [n["pitch"] for n in ns]
         report["tracks"][name] = {
             "from": stem, "notes": len(ns), "range": [min(pitches), max(pitches)], **stats[stem],
-            "perBar": np.bincount([n["start"] // (grid * 4) for n in ns], minlength=bars).tolist(),
+            # 最後の小節の終わりぎりぎりの音が、格子に合わせて次の小節に入ることがあるので、最後の小節に入れて長さをそろえる
+            "perBar": np.bincount([min(n["start"] // (grid * 4), bars - 1) for n in ns], minlength=bars)[:bars].tolist(),
         }
     FULL_DIR.mkdir(exist_ok=True)
     out = FULL_DIR / f"{song_id}.mid"

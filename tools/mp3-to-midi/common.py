@@ -6,7 +6,7 @@ TOOL_DIR = Path(__file__).resolve().parent
 REPO_DIR = TOOL_DIR.parent.parent
 WORK_DIR = TOOL_DIR / "work"  # 途中のファイル（git に入れない）
 FULL_DIR = TOOL_DIR / "full"  # 全曲の細かい MIDI（git に入れる）
-SONGS_DIR = REPO_DIR / "public" / "songs"  # プロダクトが読む 24 小節の原曲
+SONGS_DIR = REPO_DIR / "public" / "songs"  # プロダクトが読む 48 小節の原曲（compose が頭から必要な小節だけ使う）
 
 STEMS = ["vocals", "drums", "bass", "guitar", "piano", "other"]  # Demucs htdemucs_6s の6つ
 PITCHED_STEMS = [s for s in STEMS if s != "drums"]

@@ -86,7 +86,7 @@ src/util.js             共通の小さな関数
 src/input/              入力: voice.js（声の録音・分析）・tap.js（叩く）・quiz.js（10問）
 src/input/toBlueprint.js 出力: 材料 → 設計図（声・叩く＝たいが、質問＝うごてん）
 src/sensor/             センサー（任意）: heart.js（心拍）・face.js（顔の輪郭 → 音色）
-src/music/compose.js    出力: 設計図 → 原曲を選ぶ・MIDI を編集（うごてん）→ 楽譜（たいが）
+src/music/compose.js    出力: 設計図 → 原曲を選ぶ・曲の長さを決める・MIDI を編集（うごてん）→ 楽譜（たいが）
 src/music/edit/         出力: 原曲の MIDI を設計図で編集する・曲の長さを決める（layout.js）（うごてん）
 src/music/midiToScore.js 出力: MIDI → 楽譜（たいが）
 src/music/parts.js      出力・共通: MIDI のトラックの見分け（MIDI の編集と楽譜の両方が使う）
@@ -102,6 +102,6 @@ watch/                  センサー（任意）: Apple Watch・iPhone アプリ
 ```
 
 - 各ファイルの先頭に【担当】・書くもの（関数の入力と出力）・参考のコードを書いてある
-- まだ中身がないのは `src/main.js`・`src/music/compose.js`・`src/sensor/face.js`・`src/visual/sketch.js`・`/api/title`（2026-11-20 時点。曲の要素ごとの状況は `docs/song-elements.csv`）
+- まだ中身がないのは `src/main.js`・`src/sensor/face.js`・`src/visual/sketch.js`・`/api/title`（2026-11-20 時点。曲の要素ごとの状況は `docs/song-elements.csv`）
 - 前に入れていた仮の実装は、git のコミット `9cd3bd4` で見られる
 - 心拍まわり（`watch/`・`worker/heartRelay.js`・`src/sensor/heart.js`）は中身を作ってある

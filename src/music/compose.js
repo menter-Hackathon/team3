@@ -19,7 +19,7 @@ export async function compose(blueprint, { loadMidi = fetchSong } = {}) {
   const bp = normalizeBlueprint(blueprint);
   const source = await loadMidi(bp.baseSong);
   const { midi, layout } = fitLength(source, bp);
-  const { midi: edited } = editMidiByBlueprint(midi, bp);
+  const { midi: edited } = editMidiByBlueprint(midi, bp, null, { bars: layout.totalBars });
   return midiToScore(edited, bp, layout).score;
 }
 

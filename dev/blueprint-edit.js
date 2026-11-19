@@ -67,6 +67,10 @@ $("midiFile").addEventListener("change", async (e) => {
 for (const b of document.querySelectorAll("button.song")) {
   b.addEventListener("click", async () => {
     const res = await fetch(`/songs/song${b.dataset.song}.mid`);
+    if (!res.ok) {
+      $("midiInfo").textContent = `song${b.dataset.song}.mid が見つかりません（${res.status}）。public/songs/ を確かめてください`;
+      return;
+    }
     $("songRoot").value = ""; // キーは MIDI の "key: …" のテキストから読む
     setOriginal(new Midi(await res.arrayBuffer()), `song${b.dataset.song}.mid`);
   });
@@ -100,7 +104,7 @@ function update() {
   // compose と同じ順: テンポに合わせて約1分になる小節の数を決め、頭からその小節だけにしてから編集する
   const fitted = fitLength(original, readBlueprint());
   layout = fitted.layout;
-  edited = editMidiFromBlueprint(fitted.midi, readBlueprint(), songKey);
+  edited = editMidiFromBlueprint(fitted.midi, readBlueprint(), songKey, { bars: layout.totalBars });
   const r = edited.report;
   const hatName = { 4: "4分音符（間引く）", 8: "8分音符", 16: "16分音符（細かく）" };
   const s = r.sound;
@@ -272,9 +276,11 @@ async function playScore(s) {
   const synths = [melody, bass, pad, padFilter, kick, snare, hat, out, reverb, fadeGain];
 
   const start = Tone.now() + 0.2;
-  if (s.fade) {
+  if (s.fade && s.fade.end > s.fade.start) {
+    // sound.js の scheduleSong と同じフェード（アウトロで 0 まで下げる）
     fadeGain.gain.setValueAtTime(1, start + s.fade.start);
     fadeGain.gain.exponentialRampToValueAtTime(0.0001, start + s.fade.end);
+    fadeGain.gain.setValueAtTime(0, start + s.fade.end);
   }
   for (const e of s.tracks.melody) melody.triggerAttackRelease(e.note, e.duration, start + e.time, e.velocity);
   for (const e of s.tracks.bass) bass.triggerAttackRelease(e.note, e.duration, start + e.time, e.velocity);
@@ -309,10 +315,6 @@ async function play(midi, sound) {
   const synths = [lead, pad, padFilter, kick, hit, out, reverb];
 
   const start = Tone.now() + 0.2;
-  if (s.fade) {
-    fadeGain.gain.setValueAtTime(1, start + s.fade.start);
-    fadeGain.gain.exponentialRampToValueAtTime(0.0001, start + s.fade.end);
-  }
   const parts = findParts(midi);
   // ドラムは全トラックをまとめ、同じ時刻の音は1つにする（同じ時刻に2回鳴らすと Tone.js がエラーになる）
   const kicks = new Set(), hits = new Set();

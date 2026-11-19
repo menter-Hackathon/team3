@@ -24,6 +24,7 @@
 //   midi      @tonejs/midi の Midi。元の midi は書き換えず、編集したコピーを返す
 //   blueprint 設計図。中で normalizeBlueprint() を通す
 //   songKey   { root: "D", scale: "dorian" }（原曲のキー）。省くと MIDI の "key: D dorian" テキスト → 調号 → 音の分布から推定
+//   bars      曲の小節の数（省略可。compose は planLayout の totalBars を渡す）。省くと最後の音から数える
 //   report    何をしたか（画面表示・確認用）
 import { NOTES, SCALES, normalizeBlueprint } from "../../blueprint.js";
 import { clamp, median, round, seededRandom, hashString } from "../../util.js";
@@ -43,7 +44,7 @@ const GROOVE_MAX_BEATS = 0.25; // ノリのズレは 1拍の 1/4 まで（16分�
 const DRIFT_GAIN = 2.5; // テンポの変化（tempoDrift）を何倍にするか（設計図の ±10% → 曲では ±25%）
 const SOUND_CC = { reverb: 91, attack: 73, release: 72, brightness: 74 };
 
-export function editMidiByBlueprint(source, input, songKey = null) {
+export function editMidiByBlueprint(source, input, songKey = null, { bars: songBars = null } = {}) {
   const bp = normalizeBlueprint(input);
   const midi = source.clone(); // 元を書き換えないようにコピー
   const parts = findParts(midi);
@@ -105,7 +106,8 @@ export function editMidiByBlueprint(source, input, songKey = null) {
 
   // 4. ドラムの細かさ: ハイハットが一番多いトラックだけ、原曲でハイハットが鳴っていた小節を刻み直す
   const endTick = Math.max(0, ...midi.tracks.flatMap((t) => t.notes.map((n) => n.ticks + n.durationTicks)));
-  const bars = Math.max(1, Math.ceil(endTick / barTicks));
+  // 曲の小節の数（テンポの変化を広げる長さ）。compose は planLayout の totalBars を渡す（最後の小節が休みでも、見込みどおりの長さになるように）
+  const bars = songBars ?? Math.max(1, Math.ceil(endTick / barTicks));
   const hatDiv = useTaps && is44 ? hatDivision(bp.bpm, bp.stability) : null;
   let hats = null;
   const hatTrack = maxBy(parts.drums, (t) => t.notes.filter((n) => n.midi === CLOSED_HAT).length);
@@ -139,6 +141,7 @@ export function editMidiByBlueprint(source, input, songKey = null) {
   }
   const tempos = midi.header.tempos;
   const bpmAt = (ticks) => tempos.filter((t) => t.ticks <= ticks).at(-1)?.bpm ?? tempos[0]?.bpm ?? 120;
+  const grooveLimitAt = (ticks) => (GROOVE_MAX_BEATS * 60) / bpmAt(ticks); // ノリのズレの上限（秒）
 
   // 7. ノリと揺らぎ: 拍の中の位置に合わせて groove のズレを足し（拍と拍の間は前後のズレを直線でつなぐ）、
   //    揺らぎ（1 − stability）の分だけ時刻と強さを揺らす。同じトラック・同じ時刻の音（和音）は同じだけずらす
@@ -155,8 +158,7 @@ export function editMidiByBlueprint(source, input, songKey = null) {
             const beatPos = (note.ticks % barTicks) / ppq; // 小節の中で何拍目か（0〜4 未満）
             const beat = Math.floor(beatPos);
             const groove = GROOVE_GAIN * (bp.groove[beat] + (bp.groove[(beat + 1) % 4] - bp.groove[beat]) * (beatPos - beat));
-            const limit = (GROOVE_MAX_BEATS * 60) / bpmAt(note.ticks);
-            sec += clamp(groove, -limit, limit);
+            sec += clamp(groove, -grooveLimitAt(note.ticks), grooveLimitAt(note.ticks));
           }
           shiftAt.set(note.ticks, sec);
         }
@@ -188,7 +190,8 @@ export function editMidiByBlueprint(source, input, songKey = null) {
         ? `${round(originalBpm)} BPM（原曲のまま）`
         : `${round(originalBpm)} → ${round(originalBpm * ratio)}${drift !== 1 ? ` → ${round(originalBpm * ratio * drift)}（最後）` : ""} BPM`,
       tempoDrift: drift,
-      groove: hasGroove ? bp.groove.map((s) => round(s * GROOVE_GAIN, 3)) : null,
+      // 実際にかけたズレ（GROOVE_GAIN 倍し、曲の最初のテンポで 1/4 拍までにしたもの）
+      groove: hasGroove ? bp.groove.map((s) => round(clamp(s * GROOVE_GAIN, -grooveLimitAt(0), grooveLimitAt(0)), 3)) : null,
       hats,
       humanize,
       warnings,
@@ -208,8 +211,8 @@ export function tempoPlan(input, midi) {
 }
 
 // 設計図と MIDI から、編集した MIDI のバイト列まで一度に作る → { midi, bytes, report }
-export function editMidiFromBlueprint(source, blueprint, songKey = null) {
-  const { midi, report } = editMidiByBlueprint(source, blueprint, songKey);
+export function editMidiFromBlueprint(source, blueprint, songKey = null, options = {}) {
+  const { midi, report } = editMidiByBlueprint(source, blueprint, songKey, options);
   return { midi, bytes: midi.toArray(), report };
 }
 

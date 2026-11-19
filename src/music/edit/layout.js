@@ -7,7 +7,8 @@
 //   maxBars  原曲の小節の数（これを超える組み合わせは選ばない）
 //   イントロ 2〜4小節・1問 1〜4小節 × 10・アウトロ 2〜6小節の中から、長さが TARGET_SEC に一番近いものを選ぶ。
 //   同じくらい近ければ、イントロ・アウトロが短いもの（2小節）を選ぶ。
-//   アウトロ（音楽がフェードアウトする所）は 4〜10 秒、イントロ（声が流れる所）は 12 秒までになるようにする
+//   アウトロ（音楽がフェードアウトする所）は 4〜10 秒、イントロ（声が流れる所）は 5〜12 秒になるようにする
+//   （イントロが短すぎると、本人の声が1問目の音楽にかぶるため）
 //   （遅い曲で長すぎるフェード・速い曲で急に切れるフェードにならないように）
 //   例（テンポの変化なし）: 60 BPM → 15小節（60秒）、80 → 17（51秒）、90 → 24（64秒）、120 → 29（58秒）、160 → 40（60秒）。テンポとテンポの変化によって約50〜70秒（多くは55〜66秒）
 // trimToBars(midi, bars) → 頭から bars 小節だけにした MIDI のコピー（はみ出す音は区間の終わりで切る）
@@ -21,6 +22,7 @@ const OUTRO_BARS = [2, 3, 4, 5, 6]; // アウトロは音楽がフェードア�
 const EXTRA_BAR_PENALTY_SEC = 0.5; // イントロ・アウトロを1小節伸ばすのは、長さが 0.5 秒以上近づくときだけ
 const FADE_MIN_SEC = 4;
 const FADE_MAX_SEC = 10;
+const INTRO_MIN_SEC = 5;
 const INTRO_MAX_SEC = 12;
 const OUT_OF_RANGE_PENALTY = 3; // フェード・イントロの長さが範囲から 1 秒外れるごとに、長さが 3 秒ずれたのと同じだけ避ける
 
@@ -36,7 +38,7 @@ export function planLayout(bpm, drift = 1, maxBars = Infinity) {
         const sec = barsSeconds(layout.totalBars, bpm, drift);
         const introSec = barsSeconds(layout.totalBars, bpm, drift, 0, intro);
         const fadeSec = barsSeconds(layout.totalBars, bpm, drift, layout.totalBars - outro, layout.totalBars);
-        const outOfRange = Math.max(0, FADE_MIN_SEC - fadeSec) + Math.max(0, fadeSec - FADE_MAX_SEC) + Math.max(0, introSec - INTRO_MAX_SEC);
+        const outOfRange = Math.max(0, FADE_MIN_SEC - fadeSec) + Math.max(0, fadeSec - FADE_MAX_SEC) + Math.max(0, INTRO_MIN_SEC - introSec) + Math.max(0, introSec - INTRO_MAX_SEC);
         const cost = Math.abs(sec - TARGET_SEC) + EXTRA_BAR_PENALTY_SEC * (intro - 2 + outro - 2) + OUT_OF_RANGE_PENALTY * outOfRange;
         if (!best || cost < best.cost) best = { ...layout, estimatedSec: Math.round(sec * 10) / 10, cost };
       }
