@@ -22,9 +22,15 @@ Apple Watch（HeartWatch）── WatchConnectivity ──▶ iPhone（HeartPhon
    cp Config/Local.xcconfig.example Config/Local.xcconfig
    ```
    `Local.xcconfig` に、自分の Team ID と、ほかの人とかぶらない Bundle ID の先頭を書く。チームは Xcode の Signing 画面ではなく、ここで設定する。
-2. Xcode で `watch/HeartRelay.xcodeproj` を開く
-3. スキーム `HeartPhone` を選び、iPhone を実機につないで実行する。ペアリング済みの Watch にも、アプリが入る
-4. Watch でアプリを開いて「測る」を押す。最初の1回だけ、ヘルスケアの許可を聞かれる
+2. iPhone を Mac にケーブルでつなぎ、iPhone のデベロッパモードをオンにする
+3. **Apple Watch を Mac とペアリングする（最初の1回だけ）**。Xcode 27 では、iPhone を選んでも Watch は出てこない
+   - DeviceHub（`/Applications/Xcode.app/Contents/Applications/DeviceHub.app`）のサイドバーの「+」→「Pair Nearby Device」を開いたままにする
+   - Watch に出た Mac を選んで「ペアリング」→ DeviceHub に出た6桁の番号を Watch に入れる。終わると Watch のデベロッパモードが使えるようになる
+   - DeviceHub で「ペアリング解除」はしない（出てこなくなった報告がある）
+4. Xcode で `watch/HeartRelay.xcodeproj` を開き、スキーム `HeartPhone` × iPhone で実行する。続けてスキーム `HeartWatch` × Apple Watch でも1回実行する（Watch を署名の許可に登録するため。iPhone 側の実行だけでは Watch は登録されない）
+   - コマンドで入れるときは `xcodebuild -scheme HeartWatch -destination 'id=<Watch の UDID>' -allowProvisioningUpdates -allowProvisioningDeviceRegistration build` → `xcrun devicectl device install app --device <Watch> HeartWatch.app`
+5. iPhone で 設定 > 一般 > VPNとデバイス管理 から、自分のデベロッパを「信頼」する（最初の1回だけ）
+6. Watch でアプリを開いて「測る」を押す。最初の1回だけ、ヘルスケアの許可を聞かれる
 
 - 対応する OS：iPhone は iOS 27 以上。Apple Watch は watchOS 9 以上（Series 4 以降なら、どの機種でもよい。Xcode 27 が作れる一番古い watchOS）。
 - 署名は無料の Personal Team でよい（Apple の表で、HealthKit は無料の「Apple Developer」でも使える）。
@@ -32,7 +38,10 @@ Apple Watch（HeartWatch）── WatchConnectivity ──▶ iPhone（HeartPhon
 
 ## 中継につなぐ
 
-- **手元で試す**：Mac で `npm run dev -- --host` を実行する。iPhone の URL は `ws://<Mac の IP>:5173/api/heart?role=send`。Mac と iPhone は同じ Wi-Fi につなぐ
+- **手元で試す**：Mac で `npm run dev -- --host` を実行する。iPhone の URL は `ws://<Mac の名前>.local:5173/api/heart?role=send`。Mac と iPhone は同じ Wi-Fi（または iPhone のインターネット共有）につなぐ
+  - Mac の名前は `scutil --get LocalHostName` か、システム設定 > 一般 > 共有 の「ローカルホスト名」で分かる
+  - IP アドレス（`ws://192.0.0.3:…` など）では使わない。iPhone の ATS（暗号化しない通信の制限）が、手元のネットワークと見なさない IP への `ws://` を止めるため（エラー -1022）。`.local` の名前なら通る（`vite.config.js` の `allowedHosts` で許可してある）
+  - 大学や会場の Wi-Fi は端末どうしの通信を止めていることがある。そのときは iPhone のインターネット共有に Mac をつなぐ
 - **公開したサイト**：`wss://<サイト>/api/heart?role=send`
 - **ブラウザ側**：画面の URL に `?heart` を付けると、`src/sensor/heart.js` の `connectHeart()` が同じサイトの `/api/heart?role=listen` につなぎ、届いた心拍（直近10個の中央値）を返します。15秒届かなければ `null` に戻ります
   - 画面ができる前に試すとき：`http://localhost:5173/?heart` を開き、開発者ツールのコンソールで `hc = (await import('/src/sensor/heart.js')).connectHeart()` を実行し、`hc.bpm` で今の値を見る

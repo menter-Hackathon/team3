@@ -58,7 +58,7 @@
 - 初回: `npm install`
 - 起動: `npm run dev` → `http://localhost:5173`（画面と `/api` が両方動く）
 - AI を使うとき: `cp .dev.vars.example .dev.vars` してキーを入れる
-- 心拍を試すとき: `npm run dev -- --host` で同じ Wi-Fi の iPhone からつなげるようにする。アプリの手順は `watch/README.md`
+- 心拍を試すとき: `npm run dev -- --host` で同じ Wi-Fi の iPhone からつなげるようにする。iPhone からは IP ではなく `ws://<Mac の名前>.local:5173/...` でつなぐ。アプリの手順は `watch/README.md`
 - ビルド確認: `npm run build`
 - 公開（チームで相談してから）: `npm run build && npx wrangler deploy`（初回は `npx wrangler login`）
 - テスト: 自動テストはまだない。音・カメラ・マイクはブラウザで実際に鳴らして確かめる

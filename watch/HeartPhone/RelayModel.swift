@@ -57,6 +57,12 @@ final class RelayModel: NSObject, ObservableObject {
         socketStatus = "接続中…"
         task.resume()
         listen(task)
+        // 10秒たってもつながらなければ、あきらめて理由を出す（「接続中…」のまま長く待たせない）
+        DispatchQueue.main.asyncAfter(deadline: .now() + 10) { [weak self] in
+            guard let self, task === self.socket, self.socketStatus == "接続中…" else { return }
+            task.cancel(with: .goingAway, reason: nil)
+            self.handleFailure(ConnectTimeout(), task: task)
+        }
         // つながったかを ping で確かめる
         task.sendPing { [weak self] error in
             DispatchQueue.main.async {
@@ -86,8 +92,11 @@ final class RelayModel: NSObject, ObservableObject {
     private func handleFailure(_ error: Error, task: URLSessionWebSocketTask) {
         guard task === socket else { return } // 古い接続のエラーは無視
         socket = nil
+        // 原因を調べられるように、Xcode のコンソールにも詳しく出す
+        let nsError = error as NSError
+        print("[relay] つながりません: \(nsError.domain) \(nsError.code) \(nsError.localizedDescription) url=\(serverURL?.absoluteString ?? "-")")
         guard wantsConnection, let url = serverURL else { return }
-        socketStatus = "切れました（\(error.localizedDescription)）。つなぎ直します…"
+        socketStatus = "つながっていません（\(error.localizedDescription)）。2秒後にもう一度試します"
         let work = DispatchWorkItem { [weak self] in
             guard let self, self.wantsConnection else { return }
             self.open(url)
@@ -181,5 +190,12 @@ extension RelayModel: WCSessionDelegate {
 
     func sessionDidDeactivate(_ session: WCSession) {
         session.activate() // Watch を付け替えたときにつなぎ直す
+    }
+}
+
+/// 中継に10秒つながらなかったときの理由
+private struct ConnectTimeout: LocalizedError {
+    var errorDescription: String? {
+        "10秒たってもつながりません。iPhone と Mac が同じ Wi-Fi か、設定 > プライバシーとセキュリティ > ローカルネットワークで許可しているかを確認してください"
     }
 }
