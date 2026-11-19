@@ -13,6 +13,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^1.9.0",
     "@mediapipe/tasks-vision": "^1.2.3",
+    "@tonejs/midi": "^2.0.28",
     "p5": "^2.4.0",
     "tone": "^15.1.22"
   },
