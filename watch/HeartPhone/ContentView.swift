@@ -51,7 +51,7 @@ struct ContentView: View {
                 } header: {
                     Text("中継サーバー")
                 } footer: {
-                    Text("手元で試すときは ws://<Mac の IP>:5173/api/heart?role=send。送っている間は画面を開いたままにしてください。")
+                    Text("手元で試すときは ws://<Mac の名前>.local:5173/api/heart?role=send（IP アドレスは使えません）。送っている間は画面を開いたままにしてください。")
                 }
             }
             .navigationTitle("心拍リレー")
