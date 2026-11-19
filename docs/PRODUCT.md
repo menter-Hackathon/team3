@@ -49,7 +49,7 @@
   - 原曲4曲（MIDI）を作る：うごてん
   - 材料 → 設計図（`toBlueprint`）：声・叩く＝たいが、質問＝うごてん（心拍・顔は任意。取れたときだけ使う）
   - 設計図 → 原曲4曲から1曲を選ぶ：うごてん
-  - 設計図 → 選んだ原曲の MIDI を編集する：たいが
+  - 設計図 → 選んだ原曲の MIDI を編集する：うごてん（原曲を作るので）
   - MIDI → 楽譜（Score）：たいが
   - 楽譜 → WAV（楽器・音色・エフェクト・音量・書き出し）：たいが
 
@@ -84,8 +84,9 @@ src/util.js             共通の小さな関数
 src/input/              入力: voice.js（声の録音・分析）・tap.js（叩く）・quiz.js（10問）
 src/input/toBlueprint.js 出力: 材料 → 設計図（声・叩く＝たいが、質問＝うごてん）
 src/sensor/             センサー（任意）: heart.js（心拍）・face.js（顔の輪郭 → 音色）
-src/music/compose.js    出力: 設計図 → 原曲を選ぶ → MIDI を編集 → 楽譜
-src/music/edit/         出力: 原曲の MIDI を設計図で編集する
+src/music/compose.js    出力: 設計図 → 原曲を選ぶ・MIDI を編集（うごてん）→ 楽譜（たいが）
+src/music/edit/         出力: 原曲の MIDI を設計図で編集する（うごてん）
+src/music/midiToScore.js 出力: MIDI → 楽譜（たいが）
 src/music/sound.js      出力: 楽器・音色・エフェクト・音量
 src/music/render.js     出力: 楽譜 → WAV（Tone.Offline）。wav.js が WAV 形式に変換
 src/visual/sketch.js    映像（p5.js）

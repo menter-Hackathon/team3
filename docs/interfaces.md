@@ -14,7 +14,7 @@ UI（src/main.js）が順番に呼ぶ
         ↓ 材料（Materials）……入力と出力の境目はこれだけ
   出力: toBlueprint(materials)      声・叩く＝たいが、質問＝うごてん（心拍・顔は取れたときだけ）
         ↓ 設計図（Blueprint）……出力の中で、ここより後ろは材料を直接見ない
-  出力: compose(blueprint)          原曲4曲から1曲を選ぶ（うごてん）→ MIDI を編集 → 楽譜（たいが）
+  出力: compose(blueprint)          原曲4曲から1曲を選ぶ → MIDI を編集（うごてん）→ 楽譜（たいが）
         ↓ 楽譜（Score）
   出力: renderSong(score, assets) → WAV（たいが）
   映像: drawVisual(container, { blueprint, score, audio })
@@ -78,7 +78,7 @@ UI（src/main.js）が順番に呼ぶ
 
 ## 3. 関数の一覧
 
-- `src/input/voice.js`（入力。`analyzeVoice` は出力が使う）
+- `src/input/voice.js`（入力。`analyzeVoice`・`detectSpeech`・`trimBuffer` は出力の `toBlueprint` が使う）
   - `recordVoice(ms = 5000)` → 声の WAV（`Blob`）`| null`
   - `analyzeVoice(buffer)` → `VoiceFeatures`
 - `src/input/tap.js`（入力。`analyzeTaps` は出力が使う）：`analyzeTaps(tapTimesMs)` → `Taps | null`（4回未満なら `null`）
@@ -86,11 +86,12 @@ UI（src/main.js）が順番に呼ぶ
 - `src/input/toBlueprint.js`（出力）：`toBlueprint(materials)` → `Promise<{ blueprint, assets }>`（例外を投げない。WAV の読み込みがあるので async）
 - `src/sensor/heart.js`（センサー・任意）：`connectHeart(url)` → `HeartConnection | null`
 - `src/sensor/face.js`（センサー・任意）：`captureFace()` → `Face | null`
-- `src/music/compose.js`（出力）：`compose(blueprint)` → `Promise<Score>`（原曲の MIDI を読むので async）
-- `src/music/edit/blueprintEdit.js`（出力・たいが）：`editMidiByBlueprint(midi, blueprint, songKey)` → `{ midi, report }`
-- `src/music/sound.js`（出力）：`scheduleSong(score, assets)` → なし（楽器を作って予約する）
-- `src/music/render.js`（出力）：`renderSong(score, assets)` → `Blob`（WAV）
-- `src/music/wav.js`（出力）：`audioBufferToWav(audioBuffer)` → `Blob`
+- `src/music/compose.js`（出力。原曲の選択・編集＝うごてん、楽譜＝たいが）：`compose(blueprint)` → `Promise<Score>`（原曲の MIDI を読むので async）
+- `src/music/edit/blueprintEdit.js`（出力・うごてん）：`editMidiByBlueprint(midi, blueprint, songKey)` → `{ midi, report }`・`soundFromBlueprint(blueprint)` → 音の柔らかさの設定
+- `src/music/midiToScore.js`（出力・たいが）：`midiToScore(midi, blueprint)` → `{ score, report }`
+- `src/music/sound.js`（出力・たいが）：`scheduleSong(score, assets)` → `Promise`（楽器を作って予約する。リバーブの準備ができたら終わる）
+- `src/music/render.js`（出力・たいが）：`renderSong(score, assets)` → `Promise<Blob>`（WAV）
+- `src/music/wav.js`（出力・たいが）：`audioBufferToWav(audioBuffer)` → `Blob`・`encodeWav(channels, sampleRate)` → `ArrayBuffer`
 - `src/visual/sketch.js`（映像）：`drawVisual(container, { blueprint, score, audio })` → `{ remove() }`
 - `src/blueprint.js`（全員）：`defaultBlueprint()`・`normalizeBlueprint(input)`・`SAMPLE_BLUEPRINT`
 
@@ -185,6 +186,7 @@ Score = {
   bpm: number,
   duration: 秒,        // 余韻も含めた長さ
   timbre: number[],    // 設計図のまま
+  sound: { reverbDecay: 秒, reverbWet: 0〜1, padAttack: 秒, padRelease: 秒, padFilterHz: number },  // 設計図の breathiness から（soundFromBlueprint）
   structure: [{ name: "intro" | "q1" … "q10" | "outro", start: 秒, end: 秒 }],
   tracks: {
     voice:  [{ time, duration?, detune? }],   // duration がなければ最後まで、detune がなければ元の高さ
@@ -200,6 +202,7 @@ Score = {
 assets = { voice: AudioBuffer | null }
 ```
 
+- MIDI → 楽譜は `midiToScore`（たいが）。どの MIDI トラックをどの楽譜のトラックにするかは `src/music/midiToScore.js` の先頭に書いてある。
 - トラック名はこの7つ。足すときは出力の担当で決める。`renderSong` の側は知らないトラックを無視して `console.warn` を出す。
 - 各トラックの中は `time` の小さい順に並べる。同じトラックで同じ `time` を2回使わない（Tone.js でエラーになる）。
 - `time` は 0 以上、`duration` 未満。
@@ -207,7 +210,7 @@ assets = { voice: AudioBuffer | null }
 
 ## 8. 出力（WAV・映像）
 
-- `renderSong(score, assets)` → WAV の `Blob`（`audio/wav`、44.1kHz・16bit・ステレオ）。
+- `renderSong(score, assets)` → WAV の `Blob`（`audio/wav`、44.1kHz・16bit・ステレオ）。一番大きい音が −1 dB になるように曲全体の音量をそろえる（音割れを防ぐ）。
 - 保存するファイル名は `rashisa-YYYYMMDD-HHMM.wav`。名前など個人の情報は入れない。
 - 画面ではこの WAV を `<audio>` で流す（聞いた曲＝持ち帰る曲）。
 - `drawVisual(container, { blueprint, score, audio })` → `{ remove() }`。`audio` は再生中の `<audio>`。`audio.currentTime` と `score.structure` で、曲の今どこかが分かる。

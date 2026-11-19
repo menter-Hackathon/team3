@@ -252,8 +252,8 @@ export function detectSpeech(data, sampleRate) {
   return { frame, rms, isSpeech, first, last, speechFrames };
 }
 
-// 声のある区間（前後に少し余裕をつけて）だけを切り出した AudioBuffer と、切り出し開始位置（サンプル）
-function trimBuffer(raw, speech) {
+// 声のある区間（前後に少し余裕をつけて）だけを切り出した AudioBuffer と、切り出し開始位置（サンプル）。出力の toBlueprint も使う
+export function trimBuffer(raw, speech) {
   const pad = Math.round(raw.sampleRate * PAD_SEC);
   const start = Math.max(0, speech.first * speech.frame - pad);
   const end = Math.min(raw.length, (speech.last + 1) * speech.frame + pad);
