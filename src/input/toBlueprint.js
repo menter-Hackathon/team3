@@ -12,15 +12,19 @@
 //                   root を入れず rootFromVoice を false にする（原曲のキーのまま）。取れた項目だけ入れる
 //   叩く（たいが）  tapsToBlueprint(intervalsMs) 叩いた間隔 → 時刻にして analyzeTaps（tap.js）
 //                   bpm・groove・stability ← analyzeTaps の結果、tempoDrift ← 前半と後半の拍の長さの比
-//   質問（うごてん）baseSong・scale・density・sections ← scoreQuiz（quiz.js）。TODO(うごてん)
+//   質問（うごてん）quizToBlueprint(quiz)  10問の答えと回答時間から（性格の点数は scoreQuiz（quiz.js））
+//                   baseSong ← 外向性 × 気分の安定（4曲から1曲）・scale ← 外向性と気分の安定の平均（暗い〜明るい）
+//                   density ← 外向性と開放性の平均・sections ← 1問ごとの答え（盛り上がり・明るさ）と回答時間（迷い）
+//                   10問そろっていなければ使わない（途中でやめたら quiz は null の決まり）。性格の点数は設計図に入れない
 //   心拍（任意）    bpm を心拍に寄せる（叩いていなければ心拍の速さにする）
 //   顔（任意）      timbre ← face.timbre
 //   最後に必ず normalizeBlueprint() を通す（範囲外の値を直す）
 import * as Tone from "tone";
-import { NOTES, defaultBlueprint, normalizeBlueprint } from "../blueprint.js";
+import { NOTES, SCALES, defaultBlueprint, normalizeBlueprint } from "../blueprint.js";
 import { clamp, median, round } from "../util.js";
 import { analyzeVoice, detectSpeech, trimBuffer } from "./voice.js";
 import { analyzeTaps } from "./tap.js";
+import { QUESTIONS, CHOICE_WEIGHTS, scoreQuiz } from "./quiz.js";
 
 export async function toBlueprint(materials = {}) {
   const { voiceWav = null, tapIntervalsMs = null, quiz = null, heart = null, face = null } = materials ?? {};
@@ -54,8 +58,9 @@ export async function toBlueprint(materials = {}) {
   }
 
   // 質問（うごてん）
-  if (Array.isArray(quiz) && quiz.length) {
-    // TODO(うごてん): const traits = scoreQuiz(quiz) → bp.baseSong・bp.scale・bp.density・bp.sections
+  const fromQuiz = quizToBlueprint(quiz);
+  if (fromQuiz) {
+    Object.assign(bp, fromQuiz);
     sources.quiz = true;
   }
 
@@ -143,3 +148,51 @@ export function tempoDrift(intervals, bpm) {
 }
 
 const isNum = (v) => typeof v === "number" && Number.isFinite(v);
+
+// ── 質問 ───────────────────────────────────────
+// 性格 → 音楽の決め方。性格の点数（traits）はこの関数の中だけで使い、設計図には音楽の数字にしてから入れる。
+// 「○○タイプ」のような名前は付けない（baseSong は曲の番号だけ）。
+
+// 原曲4曲（public/songs/song1〜4.mid）の割り当て。曲の名前からの仮の割り当てなので、原曲を作ったうごてんが直してよい
+//   外向的・気分が安定 → 1「輝く瞬間」、内向的・安定 → 2「Club Ambience」、内向的・揺れやすい → 3「Dramatic Arc」、外向的・揺れやすい → 4「Syncopated Beat」
+const SONG_BY_MOOD = { outgoingCalm: 1, quietCalm: 2, quietRestless: 3, outgoingRestless: 4 };
+const SCALE_ORDER = Object.keys(SCALES); // 暗い順（phrygian … lydian）
+const ENERGY_MIN = 0.25; // 「どちらでもない」と答えた問の盛り上がり。はっきり答えるほど 1 に近づく
+const HESITATION_FROM = 1; // 回答時間が自分の中央値より長いぶんを「迷い」にする（ふだんの速さなら 0）
+const HESITATION_TO = 2.5; // この倍率で迷い 1
+const NEUTRAL_HESITATION = 0.2; // 「どちらでもない」を選んだ問に足す迷い
+
+// 10問の答え [{ value: 1〜5, responseMs }] → 設計図の一部 { baseSong, scale, density, sections } | null（10問そろっていない）
+export function quizToBlueprint(quiz) {
+  if (!Array.isArray(quiz) || quiz.length !== QUESTIONS.length) return null;
+  const traits = scoreQuiz(quiz);
+  const calm = 1 - traits.neuroticism; // 気分の安定（神経症傾向の逆）
+  const outgoing = traits.extraversion >= 0.5;
+  const mood = calm >= 0.5 ? (outgoing ? "outgoingCalm" : "quietCalm") : outgoing ? "outgoingRestless" : "quietRestless";
+  const brightness = (traits.extraversion + calm) / 2;
+
+  const times = quiz.map((a) => a?.responseMs).filter((ms) => isNum(ms) && ms > 0);
+  const typicalMs = times.length ? median(times) : null;
+
+  return {
+    baseSong: SONG_BY_MOOD[mood],
+    scale: SCALE_ORDER[Math.round(brightness * (SCALE_ORDER.length - 1))],
+    density: round((traits.extraversion + traits.openness) / 2),
+    sections: QUESTIONS.map((q, i) => {
+      const value = Math.round(quiz[i]?.value);
+      const weight = CHOICE_WEIGHTS[value - 1] ?? 0; // -2〜2。範囲外は「どちらでもない」
+      // 明るさ：その特性の「明るい側」に答えたら明るく。神経症傾向は高いほうを暗い側にする
+      let toward = q.reverse ? -weight : weight;
+      if (q.trait === "neuroticism") toward = -toward;
+      // 迷い：自分のふだんの速さより時間がかかった問ほど大きく。「どちらでもない」も少し足す
+      const ms = quiz[i]?.responseMs;
+      const slow = typicalMs && isNum(ms) ? clamp((ms / typicalMs - HESITATION_FROM) / (HESITATION_TO - HESITATION_FROM), 0, 1) : 0;
+      return {
+        q: i + 1,
+        energy: round(ENERGY_MIN + (1 - ENERGY_MIN) * (Math.abs(weight) / 2)),
+        brightness: round(0.5 + toward / 4),
+        hesitation: round(clamp(slow + (weight === 0 ? NEUTRAL_HESITATION : 0), 0, 1)),
+      };
+    }),
+  };
+}
