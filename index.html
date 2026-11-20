@@ -3,10 +3,68 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>らしさ（仮）</title>
+    <title>rasisong</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!-- 欧文はセリフ体（Cormorant Garamond）、和文は明朝体（しっぽり明朝）。読めないときは端末の明朝体になる -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400;1,500&family=Shippori+Mincho:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
   </head>
   <body>
-    <main id="app"></main>
+    <!-- 装飾の部品（アール・ヌーヴォー）。src/main.js から <use href="#…"> で使い回す -->
+    <svg width="0" height="0" style="position: absolute" aria-hidden="true">
+      <defs>
+        <!-- 角の飾り：むち打ち曲線と若葉 -->
+        <symbol id="corner" viewBox="0 0 120 120">
+          <g fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round">
+            <path d="M6 114 C 6 70 22 40 58 24 C 78 15 98 12 114 12" />
+            <path d="M14 114 C 14 82 26 58 50 44" opacity="0.6" />
+            <path d="M58 24 C 44 30 40 48 52 54 C 62 59 70 48 62 42 C 57 38 52 44 56 47" />
+            <path d="M6 114 C 20 104 34 102 44 106" opacity="0.6" />
+          </g>
+          <g fill="currentColor">
+            <path d="M28 76 C 40 70 50 76 48 90 C 36 90 28 86 28 76 Z" opacity="0.45" />
+            <path d="M84 30 C 90 20 102 20 106 28 C 98 34 90 34 84 30 Z" opacity="0.45" />
+            <circle cx="114" cy="12" r="2" />
+            <circle cx="6" cy="114" r="2" />
+          </g>
+        </symbol>
+        <!-- 区切り：中央に百合の蕾、左右に蔓 -->
+        <symbol id="divider" viewBox="0 0 240 22">
+          <g fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round">
+            <path d="M4 11 H84" opacity="0.6" />
+            <path d="M156 11 H236" opacity="0.6" />
+            <path d="M84 11 C 96 11 100 3 110 5" />
+            <path d="M156 11 C 144 11 140 3 130 5" />
+            <path d="M84 11 C 96 11 100 19 110 17" opacity="0.6" />
+            <path d="M156 11 C 144 11 140 19 130 17" opacity="0.6" />
+          </g>
+          <path d="M120 1 C 113 8 113 14 120 21 C 127 14 127 8 120 1 Z" fill="currentColor" opacity="0.8" />
+          <circle cx="4" cy="11" r="1.6" fill="currentColor" />
+          <circle cx="236" cy="11" r="1.6" fill="currentColor" />
+        </symbol>
+        <!-- 音符 -->
+        <symbol id="note" viewBox="0 0 64 64">
+          <path d="M26 14v26.5a8 8 0 1 0 4 6.9V24c8 1 13 5 14 12 4-9-2-17-14-22z" fill="currentColor" />
+        </symbol>
+        <!-- 花びら1枚（輪に並べて使う） -->
+        <symbol id="petal" viewBox="-10 -40 20 40">
+          <path d="M0 0 C -9 -12 -7 -30 0 -40 C 7 -30 9 -12 0 0 Z" fill="none" stroke="currentColor" stroke-width="0.8" />
+        </symbol>
+      </defs>
+    </svg>
+
+    <div class="brand"><svg aria-hidden="true"><use href="#note" /></svg>rasisong</div>
+    <main class="stage">
+      <div class="frame">
+        <svg class="corner bl" aria-hidden="true"><use href="#corner" /></svg>
+        <svg class="corner br" aria-hidden="true"><use href="#corner" /></svg>
+        <div id="app"></div>
+      </div>
+    </main>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>
