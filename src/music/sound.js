@@ -9,7 +9,7 @@
 //
 // つなぎ方:
 //   melody（score.timbre の倍音 → ビブラート）・pad（フィルター → コーラス）→ リバーブ（score.sound）─┐
-//   bass・kick・snare（胴＋ノイズ）・hat（ノイズの高い所、少し右）────────────────────┴→ フェード → コンプレッサー（まとめる）→ リミッター（音割れ防止）→ 出力
+//   bass・kick・snare（胴＋ノイズ）・hat（ノイズの高い所、少し右）────────────────────┴→ コンプレッサー（まとめる）→ フェード → リミッター（音割れ防止）→ 出力
 //   voice → 声用のリバーブ（同じ設定）──────────────────────────────────┘（声はフェードしない）
 //   区間の明るさ: score.sections の brightness で、メロディとパッドのローパスの周波数を区間ごとに 0.5〜2 倍にする（0.5 で変えない）
 //     区間の頭から SECTION_RAMP（1）秒かけて変える。区間の外（イントロ・アウトロ）は 1 倍。sections の時刻は負でもよい（render.js の部分の前に始まった区間）
@@ -41,14 +41,16 @@ export async function scheduleSong(score, assets = { voice: null }) {
 
   // 出力のつなぎ方
   const limiter = new Tone.Limiter(-1).toDestination();
-  const glue = new Tone.Compressor({ threshold: -18, ratio: 3, attack: 0.01, release: 0.2 }).connect(limiter); // 楽器どうしをまとめる
-  const music = new Tone.Gain(1).connect(glue); // 音楽全体（フェードをかける）
+  // 音楽全体: 楽器 → コンプレッサー（まとめる）→ フェード → リミッター。
+  // フェードはコンプレッサーのあとにかける（前にかけると、音が小さくなるほど圧縮が緩んで、フェードの前半が打ち消される）
+  const fader = new Tone.Gain(1).connect(limiter);
+  const music = new Tone.Compressor({ threshold: -18, ratio: 3, attack: 0.01, release: 0.2 }).connect(fader);
   const reverb = new Tone.Reverb({ decay: sound.reverbDecay, wet: sound.reverbWet }).connect(music);
   const voiceReverb = new Tone.Reverb({ decay: sound.reverbDecay, wet: sound.reverbWet }).connect(limiter);
   if (score.fade && score.fade.end > score.fade.start) {
-    music.gain.setValueAtTime(1, score.fade.start);
-    music.gain.exponentialRampToValueAtTime(FADE_FLOOR, score.fade.end);
-    music.gain.setValueAtTime(0, score.fade.end);
+    fader.gain.setValueAtTime(1, score.fade.start);
+    fader.gain.exponentialRampToValueAtTime(FADE_FLOOR, score.fade.end);
+    fader.gain.setValueAtTime(0, score.fade.end);
   }
 
   // メロディ: 設計図の倍音（顔の輪郭など）をそのまま音色にする。区間（10問）があるときだけ、明るさをローパスで変える

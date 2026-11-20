@@ -324,6 +324,7 @@ function applySections(midi, parts, bp, ranges) {
   const energyOf = (i) => bp.sections[i]?.energy ?? 0.5; // イントロ・アウトロは 0.5（そのまま）
   // 区間の頭の1拍は、前の区間の強さからなめらかにつなぐ（急に変わらないように）。アウトロの頭の1拍も、最後の問から 0.5 へつなぐ
   const blended = (into, from, to) => (into < ppq ? from + (to - from) * (into / ppq) : to);
+  const hatFactorOf = (i) => (energyOf(i) < ENERGY_SPARSE ? QUIET_HAT_VELOCITY : 1); // 静かな区間のハイハットの倍率
   for (const [i, range] of ranges.entries()) {
     const sec = bp.sections[range.q - 1];
     if (!sec) continue;
@@ -332,10 +333,17 @@ function applySections(midi, parts, bp, ranges) {
     for (const track of midi.tracks) {
       for (const n of track.notes) if (inside(n)) n.velocity = energyVelocity(n.velocity, blended(n.ticks - range.from, before, sec.energy));
     }
-    if (sec.energy < ENERGY_SPARSE) {
-      for (const track of parts.drums) for (const n of track.notes) if (inside(n) && DRUM_NOTES.hat.includes(n.midi)) n.velocity = clamp(n.velocity * QUIET_HAT_VELOCITY, 0.05, 1);
-      quiet.push(range.q);
+    // 静かな区間のハイハットも、区間の頭の1拍で前の区間の大きさからつなぐ（前が静かなら最初から小さいまま）
+    const hatBefore = i > 0 ? hatFactorOf(i - 1) : 1;
+    const hatNow = hatFactorOf(i);
+    if (hatNow !== 1 || hatBefore !== 1) {
+      for (const track of parts.drums) {
+        for (const n of track.notes) {
+          if (inside(n) && DRUM_NOTES.hat.includes(n.midi)) n.velocity = clamp(n.velocity * blended(n.ticks - range.from, hatBefore, hatNow), 0.05, 1);
+        }
+      }
     }
+    if (sec.energy < ENERGY_SPARSE) quiet.push(range.q);
     // 迷い: 0.25 以上で頭のメロディを半拍休む
     const beats = sec.hesitation < 0.25 ? 0 : 0.5;
     if (beats && parts.melody) {
@@ -358,7 +366,11 @@ function applySections(midi, parts, bp, ranges) {
     for (const track of midi.tracks) {
       for (const n of track.notes) {
         const into = n.ticks - last.to;
-        if (into >= 0 && into < ppq) n.velocity = energyVelocity(n.velocity, blended(into, energyOf(last.q - 1), 0.5));
+        if (into < 0 || into >= ppq) continue;
+        n.velocity = energyVelocity(n.velocity, blended(into, energyOf(last.q - 1), 0.5));
+        if (DRUM_NOTES.hat.includes(n.midi) && parts.drums.includes(track)) {
+          n.velocity = clamp(n.velocity * blended(into, hatFactorOf(last.q - 1), 1), 0.05, 1);
+        }
       }
     }
   }
