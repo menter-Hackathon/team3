@@ -35,8 +35,8 @@ UI（src/main.js）が順番に呼ぶ
 - 10問の答え `quiz`：`main.js` → `toBlueprint.js`（JS オブジェクトの配列 `[{ value, responseMs }]` / `null`。点数は `toBlueprint.js` が `quiz.js` の `scoreQuiz` で出す）
 - 心拍 `heart`：`heart.js` → `toBlueprint.js`（JS オブジェクト `{ bpm }` / `null`）
 - 顔の音色 `face`：`face.js` → `toBlueprint.js`（JS オブジェクト `{ timbre }` / `null`）
-- 瞬き `blinks`（案）：`blink.js` → `main.js` → `toBlueprint.js`（JS オブジェクト `{ timesMs, count, perMinute }` / `null`。UI が `startBlinks()` で返った tracker の `summarize()` でまとめて渡す）
-- 材料まとめ `materials`：`main.js` → `toBlueprint.js`（JS オブジェクト `{ voiceWav, tapIntervalsMs, quiz, heart, face, blinks }`。`blinks` は案）
+- 瞬き `blinks`（任意。URL に `?blink` のときだけ）：`blink.js` → `main.js` → `toBlueprint.js`（JS オブジェクト `{ timesMs, count, perMinute }` / `null`。UI が `startBlinks()` で返った tracker の `summarize()` でまとめて渡す）
+- 材料まとめ `materials`：`main.js` → `toBlueprint.js`（JS オブジェクト `{ voiceWav, tapIntervalsMs, quiz, heart, face, blinks }`）
 - 設計図 `blueprint`：`toBlueprint.js` → `compose.js`（JSON にできる形の JS オブジェクト。`sketch.js` と `/api/title` にも渡す）
 - 原曲 `songs`：`compose.js` が読む（MIDI ファイル4つ。「6. 原曲」）
 - 楽譜 `score`：`compose.js` → `render.js` → `sound.js`（JSON にできる形の JS オブジェクト）
@@ -115,7 +115,7 @@ Materials = {
   quiz:  QuizAnswer[] | null,       // 10個。UI が作る
   heart: { bpm: number } | null,    // 30〜220。UI がその時点の値を入れる
   face:  Face | null,
-  blinks: Blinks | null,            // 案。カメラ・モデルが使えない、顔が映っていた時間が半分未満のときは null
+  blinks: Blinks | null,            // ?blink のときだけ。カメラ・モデルが使えない、顔が映っていた時間が半分未満のときは null
 }
 
 // ここから下は出力の中（toBlueprint）で作る
@@ -133,10 +133,10 @@ BlinkTracker  = { timesMs, score: 今の目の閉じ具合 0〜1, faceVisible, f
 - `responseMs` は、質問を出した時刻を UI が覚えておいて測る。叩いた時刻も UI が `pointerdown` のたびに集め、隣どうしの差を `tapIntervalsMs` にして渡す。
 - `Traits`（性格の点数）は `toBlueprint` の質問の部分（うごてん）の中だけで使う。設計図には入れない（AI や画面に性格の数字を出さないため）。
 - `connectHeart` は、つながったままの接続を返す。材料として渡すときは、UI がその時点の値を `{ bpm }` にして渡す。
-- 瞬き（案）：UI が10問の前に `startBlinks()` を始め、終わったら `tracker.summarize(1問目を出した時刻, 最後に答えた時刻)` で `blinks` にまとめ、`stop()` する。
+- 瞬き（URL に `?blink` のときだけ）：UI が10問の前に `startBlinks()` を始め、終わったら `tracker.summarize(1問目を出した時刻, 最後に答えた時刻)` で `blinks` にまとめ、`stop()` する。
   - モデルの読み込みに数秒かかる。10問が先に終わってから tracker が届いたら、UI は `stop()` して `blinks` は `null` にする。
   - 問ごとに分けるときは、`timesMs` と `quiz[i].shownAtMs`〜`shownAtMs + responseMs` を比べる（`shownAtMs` は UI が入れる）。
-  - 設計図のどこに使うか（例：瞬きの位置でその問の区間に音を置く、回数で細かさを変える）は、出力（`toBlueprint`・MIDI の編集）の担当と相談して決める（未決定）。決まったら `sources` にも `blinks` を足す。
+  - 曲での使い方：`toBlueprint` が瞬きの時刻を「何問目の、答えるまでのどの位置か」（設計図の `blinks`）に直し、`compose` がその問の区間の同じ位置に小さな鐘（楽譜の `blink` トラック）を置く。どの問にも入らない瞬き（問と問のあいだ）は使わない。
 
 ## 5. 設計図（出力の中：`toBlueprint` → `compose`）version 1
 
@@ -158,7 +158,7 @@ BlinkTracker  = { timesMs, score: 今の目の閉じ具合 0〜1, faceVisible, f
   "sections": [
     { "q": 1, "energy": 0.3, "brightness": 0.5, "hesitation": 0.1 }
   ],
-  "sources": { "voice": true, "taps": true, "quiz": true, "heart": false, "face": false }
+  "sources": { "voice": true, "taps": true, "quiz": true, "heart": false, "face": false, "blinks": false }
 }
 ```
 
@@ -178,6 +178,7 @@ BlinkTracker  = { timesMs, score: 今の目の閉じ具合 0〜1, faceVisible, f
 | `tempoDrift`（追加） | 0.9〜1.1 | 叩く速さの前半と後半の比 | たいが | テンポの変化（最後のテンポ ÷ 最初のテンポ）。曲では変化を 2.5 倍にして使う（±10% → ±25%。`blueprintEdit.js` の `DRIFT_GAIN`） |
 | `timbre` | 1〜16個、各 0〜1 | 顔の輪郭（任意）。なければ既定の音色 | — | 音色（倍音の強さ） |
 | `sections` | 必ず10個 | 質問（1問ごと。`energy` は答えの強さ、`brightness` は答えの向き、`hesitation` は回答時間〔自分の中央値との比〕） | うごてん | 1問ごとの区間（1〜4小節。テンポで変わる。`planLayout`）の `q`（1〜10）・盛り上がり `energy`・明るさ `brightness`・迷い `hesitation`（各 0〜1） |
+| `blinks`（追加） | `[{ q: 1〜10, at: 0〜1 }]`（60個まで） | 瞬き（任意）。何問目の、答えるまでのどの位置か | たつ | その問の区間の同じ位置に小さな鐘を鳴らす（`compose` の `blinkTrack`） |
 | `sources` | 真偽値 | どの材料が取れたか | 全員 | 画面の表示・AI の曲名・確認。`voice` は声が録れていれば true（高さが取れなくても true。キーを変えるかは `rootFromVoice`）。`voice` がなければキー・メロディの音域・音の柔らかさは原曲のまま、`taps`・`heart` がなければテンポは原曲のまま、`taps` がなければテンポの変化・ノリ・ドラム・揺らぎも原曲のまま |
 
 - （追加）の項目は、既定値があって、なくても動く追加なので `version` は 1 のまま（「11. 形を変えるとき」）。`src/blueprint.js` の `defaultBlueprint()`・`normalizeBlueprint()` にも足す。
@@ -220,6 +221,7 @@ Score = {
     kick:   [{ time, velocity }],
     snare:  [{ time, velocity }],
     hat:    [{ time, velocity }],
+    blink:  [{ time, note: "D6", velocity }],  // 瞬きの位置の小さな鐘（瞬きがなければ空）
   },
 }
 
@@ -227,7 +229,7 @@ assets = { voice: AudioBuffer | null }
 ```
 
 - MIDI → 楽譜は `midiToScore`（たいが）。どの MIDI トラックをどの楽譜のトラックにするかは `src/music/midiToScore.js` の先頭に書いてある。
-- トラック名はこの7つ。足すときは出力の担当で決める。`renderSong` の側は知らないトラックを無視して `console.warn` を出す。
+- トラック名はこの8つ。足すときは出力の担当で決める。`renderSong` の側は知らないトラックを無視して `console.warn` を出す。
 - 各トラックの中は `time` の小さい順に並べる。同じトラックで同じ `time` を2回使わない（Tone.js でエラーになる）。
 - `time` は 0 以上、`duration` 未満。
 - `structure` は、映像と画面が「曲の今どこか」を知るために使う。

@@ -18,6 +18,8 @@
 //                   10問そろっていなければ使わない（途中でやめたら quiz は null の決まり）。性格の点数は設計図に入れない
 //   心拍（任意）    bpm を心拍に寄せる（叩いていなければ心拍の速さにする）
 //   顔（任意）      timbre ← face.timbre
+//   瞬き（任意）    blinksToBlueprint(blinks, quiz)  瞬きの時刻を「何問目の、答えるまでのどの位置か」（q・at 0〜1）に直す
+//                   問いを出した時刻（quiz[i].shownAtMs）と答えるまでの時間（responseMs）で分ける。どの問にも入らない瞬きは使わない
 //   最後に必ず normalizeBlueprint() を通す（範囲外の値を直す）
 import * as Tone from "tone";
 import { NOTES, SCALES, defaultBlueprint, normalizeBlueprint } from "../blueprint.js";
@@ -27,9 +29,9 @@ import { analyzeTaps } from "./tap.js";
 import { QUESTIONS, CHOICE_WEIGHTS, scoreQuiz } from "./quiz.js";
 
 export async function toBlueprint(materials = {}) {
-  const { voiceWav = null, tapIntervalsMs = null, quiz = null, heart = null, face = null } = materials ?? {};
+  const { voiceWav = null, tapIntervalsMs = null, quiz = null, heart = null, face = null, blinks = null } = materials ?? {};
   const bp = defaultBlueprint();
-  const sources = { voice: false, taps: false, quiz: false, heart: false, face: false };
+  const sources = { voice: false, taps: false, quiz: false, heart: false, face: false, blinks: false };
 
   // 声
   const voice = await loadVoice(voiceWav);
@@ -62,6 +64,13 @@ export async function toBlueprint(materials = {}) {
   if (fromQuiz) {
     Object.assign(bp, fromQuiz);
     sources.quiz = true;
+  }
+
+  // 瞬き（任意）
+  const fromBlinks = blinksToBlueprint(blinks, quiz);
+  if (fromBlinks) {
+    bp.blinks = fromBlinks;
+    sources.blinks = true;
   }
 
   bp.sources = sources;
@@ -199,4 +208,19 @@ export function quizToBlueprint(quiz) {
       };
     }),
   };
+}
+
+// ── 瞬き ───────────────────────────────────────
+// blinks（{ timesMs }。blink.js の tracker.summarize の形）と10問の答え → [{ q, at }] | null（使えない）
+// at は「問いを出してから答えるまで」の中の位置（0〜1）。曲では、その問の区間の同じ位置に鳴らす
+export function blinksToBlueprint(blinks, quiz) {
+  if (!Array.isArray(blinks?.timesMs) || !Array.isArray(quiz) || quiz.length !== QUESTIONS.length) return null;
+  const windows = quiz.map((a, i) => ({ q: i + 1, from: a?.shownAtMs, len: a?.responseMs }));
+  if (!windows.every((w) => isNum(w.from) && isNum(w.len) && w.len > 0)) return null; // 問いを出した時刻がないと分けられない
+  const out = [];
+  for (const t of blinks.timesMs) {
+    const w = windows.find((x) => t >= x.from && t <= x.from + x.len);
+    if (w) out.push({ q: w.q, at: round((t - w.from) / w.len, 3) });
+  }
+  return out;
 }
