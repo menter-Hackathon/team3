@@ -5,7 +5,8 @@
 // 編集の順番と、使う設計図の項目:
 //   声（sources.voice があるとき）
 //     1. 移調          root         原曲を、このキーに移調する（rootFromVoice が true のときだけ。音階は原曲のまま。ドラムは移調しない）
-//     2. メロディの音域 melodyRange  真ん中の音からの距離を 0.3〜2.2 倍にし（原曲の音域 ± 12 半音、C3〜C7 まで）、音階の音に寄せる
+//     2. メロディの音域 melodyRange  真ん中の音からの距離を倍にし（0 → 0.3倍・0.5 → 1倍・1 → 2.2倍の折れ線）、音階の音に寄せる。
+//                     原曲の音域 ± 12 半音・C3〜C7 からはみ出すときは、メロディ全体の倍率を下げて収める
 //     3. 音の柔らかさ   breathiness  リバーブ・パッドの設定を CC として曲の頭に書く（数字は src/music/soundSettings.js の soundFromBlueprint。鳴らす側と同じ）
 //   叩く（sources.taps があるとき。4/4 拍子の曲だけ）
 //     4. ドラムの細かさ stability・bpm  ハイハットを 4分・8分・16分で刻み直す（原曲でハイハットが鳴っていた小節だけ）
@@ -69,8 +70,9 @@ export function editMidiByBlueprint(source, input, songKey = null, { bars: songB
   }
   const newRoot = NOTES[(NOTES.indexOf(key.root) + shift + 12) % 12];
 
-  // 2. メロディの音域: 真ん中の音からの距離を倍にし、原曲の音域 ± RANGE_MARGIN の中で音階の音に寄せる
-  const rangeFactor = useVoice ? round(lerp(RANGE_MIN_FACTOR, RANGE_MAX_FACTOR, bp.melodyRange)) : 1;
+  // 2. メロディの音域: 真ん中の音からの距離を倍にし、原曲の音域 ± RANGE_MARGIN の中で音階の音に寄せる。
+  //    範囲からはみ出すときは、1音ずつ端に押し込まず、メロディ全体の倍率を下げてちょうど収める（端に音が固まらないように）
+  let rangeFactor = useVoice ? rangeFactorFor(bp.melodyRange) : 1;
   let melodySpan = null;
   if (!parts.melody) {
     if (rangeFactor !== 1) warnings.push("メロディのトラックが見つからないので、音域は変えませんでした");
@@ -80,6 +82,13 @@ export function editMidiByBlueprint(source, input, songKey = null, { bars: songB
       const center = median(parts.melody.notes.map((n) => n.midi));
       const lo = Math.max(Math.min(MELODY_LOWEST, before.low), before.low - RANGE_MARGIN);
       const hi = Math.min(Math.max(MELODY_HIGHEST, before.high), before.high + RANGE_MARGIN);
+      if (rangeFactor > 1) {
+        // lo・hi は原曲の音域をふくむので、収まる倍率は 1 以上になる
+        const above = before.high - center;
+        const below = center - before.low;
+        const fit = Math.min(above > 0 ? (hi - center) / above : Infinity, below > 0 ? (center - lo) / below : Infinity);
+        rangeFactor = round(Math.max(1, Math.min(rangeFactor, fit)));
+      }
       for (const note of parts.melody.notes) {
         const stretched = clamp(Math.round(center + (note.midi - center) * rangeFactor), lo, hi);
         note.midi = snapToScale(stretched, newRoot, key.scale, lo, hi);
@@ -306,6 +315,13 @@ export function snapToScale(midiNote, root, scale, lo = 0, hi = 127) {
 const FLATS = { Db: "C#", Eb: "D#", Gb: "F#", Ab: "G#", Bb: "A#", Cb: "B", Fb: "E" };
 const toSharp = (name) => FLATS[name] ?? name;
 const lerp = (a, b, t) => a + (b - a) * t;
+
+// melodyRange（0〜1）→ メロディの音域の倍率。真ん中（0.5）でちょうど 1 倍（原曲のまま）になる折れ線
+//   0 → RANGE_MIN_FACTOR、0.5 → 1、1 → RANGE_MAX_FACTOR
+export function rangeFactorFor(melodyRange) {
+  const r = clamp(melodyRange, 0, 1);
+  return round(r <= 0.5 ? lerp(RANGE_MIN_FACTOR, 1, r / 0.5) : lerp(1, RANGE_MAX_FACTOR, (r - 0.5) / 0.5));
+}
 const maxBy = (list, score) => list.reduce((best, x) => (best === null || score(x) > score(best) ? x : best), null);
 
 function span(notes) {
