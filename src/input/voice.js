@@ -32,8 +32,8 @@
 //            brightness          声の明るさ（高い音の成分の多さ、0〜1）
 //            spectralCentroidHz  brightness のもとの値（Hz）
 //   動き     loudnessContour     [[時刻, 大きさ], …] 0.1 秒ごとの大きさの動き
-//   そのほか duration            buffer の長さ（秒）
-//            onsetInBuffer       buffer の中で声が始まる時刻（秒）
+//   そのほか duration            analyzeVoice に渡した buffer の長さ（秒）
+//            onsetInBuffer       その buffer の中で声が始まる時刻（秒）
 // 取れなかった特徴は null（高さが取れない録音なら pitchHz 系は null、音節が少なすぎるなら speed・rhythm・accent は null）。
 import * as Tone from "tone";
 import { clamp, median } from "../util.js";

@@ -188,26 +188,26 @@ let tapTimesMs = [];
 let tapTimer = null;
 let tapTick = null;
 let tapStart = 0;
+let tapDone = false; // 解析が終わったか（終わったあとに叩いたら、新しい回として数え直す）
 
 function tapReset() {
   clearTimeout(tapTimer);
   clearInterval(tapTick);
-  tapTimes_clear();
+  tapTimesMs = [];
+  tapTimer = null;
+  tapTick = null;
+  tapDone = false;
   materials.tapIntervalsMs = null;
   $("pad").textContent = "ここを叩く";
   $("pad").classList.remove("active");
   $("tap-status").textContent = "";
   $("tap-result").innerHTML = "";
 }
-function tapTimes_clear() {
-  tapTimesMs = [];
-  tapTimer = null;
-  tapTick = null;
-}
 
 function tapFinish() {
   clearTimeout(tapTimer);
   clearInterval(tapTick);
+  tapDone = true;
   $("pad").classList.remove("active");
   const taps = analyzeTaps(tapTimesMs);
   materials.tapIntervalsMs = measureTapIntervals(tapTimesMs);
@@ -230,6 +230,7 @@ function tapFinish() {
 }
 
 $("pad").addEventListener("pointerdown", () => {
+  if (tapDone) tapReset(); // 前の回に足さない
   const now = performance.now();
   if (tapTimesMs.length === 0) {
     tapStart = now;

@@ -1,4 +1,7 @@
 // 【入力】（analyzeTaps は出力の toBlueprint が使う）画面を叩いたリズム → 速さ（BPM）・ズレ（groove）・安定度（stability）。
+//
+// measureTapIntervals(tapTimesMs) → 叩いた間隔（ミリ秒）の配列 / null（4回未満）。UI が materials.tapIntervalsMs として渡す
+// analyzeTaps(tapTimesMs)         → { bpm, groove, stability, count } / null（4回未満）
 import { clamp, median } from "../util.js";
 
 const MIN_BPM = 60;
