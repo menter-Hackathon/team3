@@ -17,7 +17,8 @@
 //   カメラが使えない・モデルを読み込めない（20秒で打ち切り）ときは、例外を投げずに null を返す
 //   モデルを読み込んでからカメラを開く（読み込みが止まっても、カメラが付いたままにならないように）
 //
-// summarizeBlinks(timesMs, startMs, endMs) → { timesMs, count, perMinute }  時刻の配列を数えるだけ（顔が映っていたかは見ない）
+// summarizeBlinks(timesMs, startMs, endMs, activeMs?) → { timesMs, count, perMinute }  時刻の配列を数えるだけ
+//   perMinute は activeMs（実際に測れていた時間。省くと endMs − startMs）あたりで出す
 // createBlinkDetector(options) → { update(score, nowMs) → 瞬きの始まりの時刻の配列, reset(), options }  目の閉じ具合から瞬きを見つける
 
 const WASM_URL = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/wasm"; // package.json の版と合わせる
@@ -108,10 +109,10 @@ export function createBlinkDetector(options = {}) {
   };
 }
 
-// startMs〜endMs の間の瞬きを数える
-export function summarizeBlinks(timesMs, startMs, endMs) {
+// startMs〜endMs の間の瞬きを数える。1分あたりは、実際に測れていた時間（activeMs）で割る
+export function summarizeBlinks(timesMs, startMs, endMs, activeMs = endMs - startMs) {
   const inRange = timesMs.filter((t) => t >= startMs && t <= endMs);
-  const minutes = (endMs - startMs) / 60000;
+  const minutes = activeMs / 60000;
   return {
     timesMs: inRange,
     count: inRange.length,
@@ -246,12 +247,9 @@ export async function startBlinks({ video = document.createElement("video"), onB
   };
   schedule();
 
-  // startMs〜endMs のうち、顔が映っていた割合
-  const faceRatio = (startMs, endMs) => {
-    if (!(endMs > startMs)) return 0;
-    const seen = faceSpans.reduce((sum, [a, b]) => sum + Math.max(0, Math.min(b, endMs) - Math.max(a, startMs)), 0);
-    return seen / (endMs - startMs);
-  };
+  // startMs〜endMs のうち、顔が映っていた時間（ミリ秒）
+  const faceMs = (startMs, endMs) =>
+    faceSpans.reduce((sum, [a, b]) => sum + Math.max(0, Math.min(b, endMs) - Math.max(a, startMs)), 0);
 
   const tracker = {
     video,
@@ -269,7 +267,10 @@ export async function startBlinks({ video = document.createElement("video"), onB
       return frames;
     },
     summarize(startMs, endMs) {
-      return faceRatio(startMs, endMs) >= MIN_FACE_RATIO ? summarizeBlinks(timesMs, startMs, endMs) : null;
+      if (!(endMs > startMs)) return null;
+      const seenMs = faceMs(startMs, endMs);
+      // 顔が映っていた時間が少なければ null。1分あたりは、顔が映っていた時間で割る（映っていない間は瞬きを数えられないため）
+      return seenMs / (endMs - startMs) >= MIN_FACE_RATIO ? summarizeBlinks(timesMs, startMs, endMs, seenMs) : null;
     },
     stop() {
       if (!running) return; // 2回呼ばれても大丈夫にする

@@ -86,7 +86,7 @@ UI（src/main.js）が順番に呼ぶ
 - `src/input/quiz.js`（入力・うごてん）：`QUESTIONS`・`CHOICES`・`scoreQuiz(answers)` → `Traits`
 - `src/input/toBlueprint.js`（出力）：`toBlueprint(materials)` → `Promise<{ blueprint, assets }>`（例外を投げない。WAV の読み込みがあるので async）
 - `src/sensor/heart.js`（センサー・任意）：`connectHeart(url)` → `HeartConnection | null`
-- `src/sensor/blink.js`（センサー・任意）：`startBlinks({ video, onBlink })` → `Promise<BlinkTracker | null>`（モデルを読み込んでからカメラを開く。20秒で読み込めなければ `null`）、`tracker.summarize(startMs, endMs)` → `Blinks | null`、`summarizeBlinks(timesMs, startMs, endMs)` → `Blinks`（数えるだけ）、`createBlinkDetector(options)`（目の閉じ具合 → 瞬きの判定）
+- `src/sensor/blink.js`（センサー・任意）：`startBlinks({ video, onBlink })` → `Promise<BlinkTracker | null>`（モデルを読み込んでからカメラを開く。20秒で読み込めなければ `null`）、`tracker.summarize(startMs, endMs)` → `Blinks | null`、`summarizeBlinks(timesMs, startMs, endMs)` → `Blinks`（数えるだけ。1分あたりは `activeMs`〔実際に測れていた時間〕で割る）、`createBlinkDetector(options)`（目の閉じ具合 → 瞬きの判定）
 - `src/sensor/face.js`（センサー・任意）：`captureFace()` → `Face | null`
 - `src/music/compose.js`（出力。原曲の選択・編集＝うごてん、楽譜＝たいが）：`compose(blueprint)` → `Promise<Score>`（原曲の MIDI を読むので async）
 - `src/music/edit/blueprintEdit.js`（出力・うごてん）：`editMidiByBlueprint(midi, blueprint, songKey)` → `{ midi, report }`
