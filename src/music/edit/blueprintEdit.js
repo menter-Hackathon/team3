@@ -15,17 +15,17 @@
 //                     安定度 0.35 未満 → 4分、120 BPM 未満で 0.6 以上 → 16分、それ以外 → 8分
 //   テンポ（sources.taps か sources.heart があるとき）
 //     5. テンポ        bpm          原曲のテンポの変化は残したまま、全体を「bpm ÷ 原曲の最初の bpm」倍にする
-//     6. テンポの変化   tempoDrift   1小節ごとに少しずつ、最後に「tempoDrift の変化 × 2.5」倍になるように変える（±10% → ±25%。taps があるときだけ）
+//     6. テンポの変化   tempoDrift   1小節ごとに少しずつ、最後に「tempoDrift の変化 × 1.5」倍になるように変える（±10% → ±15%。taps があるときだけ）
 //   10問（続き。sources.quiz があるとき）
-//     4b. 音の多さ      density      0.5 で原曲のまま。低いとメロディ・キック・スネアの弱い位置の音を間引き、高いとスネアの小さな音を足す
+//     4b. 音の多さ      density      0.5 で原曲のまま。低いとメロディ・キック・スネアの弱い位置の音を間引き、高いとスネアの小さな音を足す（最大 15%）
 //     4c. 区間の盛り上がり sections.energy  1問ごとの区間で音の強さを変える（0 → 0.65 倍・0.5 → そのまま・1 → 1 までの残りの半分を足す）。
-//                     低い区間ではハイハットを抜く
-//     4d. 区間の迷い    sections.hesitation  迷った問の区間は、頭のメロディを休む（半拍か1拍。長い音は頭を遅らせて残す）
+//                     区間の頭の1拍で前の区間の強さからなめらかにつなぐ。低い区間ではハイハットを小さくする
+//     4d. 区間の迷い    sections.hesitation  迷った問の区間は、頭のメロディを半拍休む（長い音は頭を遅らせて残す）
 //     （区間の明るさ sections.brightness は音の側で効かせる：midiToScore → score.sections → sound.js のフィルター）
 //   5・6 の数字は tempoPlan() で決める（曲の長さを決める layout.js の planLayout も同じ数字を使う）
 //   叩く（続き）
-//     7. ノリ・揺らぎ   groove・stability  拍の位置に合わせて時刻を groove の 2 倍ずらし（1拍の 1/4 まで）、
-//                     バラつきの分だけ時刻（最大 ±45ms）と強さ（最大 ±0.3）を揺らす
+//     7. ノリ・揺らぎ   groove・stability  拍の位置に合わせて時刻を groove のぶんずらし（1拍の 1/8 まで）、
+//                     バラつきの分だけ時刻（最大 ±15ms）と強さ（最大 ±0.1）を揺らす。同じ時刻の音は全部の楽器で同じだけずらす（楽器どうしがずれないように）
 //   効き方は、その人らしさがはっきり出るように強めにしてある（設計図の範囲は変えず、ここの倍率で強くする）
 //   材料がない所は原曲のまま。
 //
@@ -48,20 +48,21 @@ const RANGE_MARGIN = 12; // 音域を広げても、原曲のメロディの一�
 const MELODY_LOWEST = 48; // それでも C3〜C7 の外には出さない（低すぎて濁る・高すぎて耳に痛い音にならないように）
 const MELODY_HIGHEST = 96;
 const CLOSED_HAT = 42; // General MIDI のクローズド・ハイハット
-const HUMANIZE_TIME_SEC = 0.045; // 揺らぎ 1 のとき、音の時刻を最大 ±45ms ずらす
-const HUMANIZE_VELOCITY = 0.3; // 揺らぎ 1 のとき、音の強さを最大 ±0.3 変える
-const GROOVE_GAIN = 2; // 叩いたズレ（groove）を何倍にして曲に入れるか
-const GROOVE_MAX_BEATS = 0.25; // ノリのズレは 1拍の 1/4 まで（16分音符ぶん以上ずれると、リズムが別物になるため）
-const DRIFT_GAIN = 2.5; // テンポの変化（tempoDrift）を何倍にするか（設計図の ±10% → 曲では ±25%）
+const HUMANIZE_TIME_SEC = 0.015; // 揺らぎ 1 のとき、音の時刻を最大 ±15ms ずらす（大きいと、もたついて聞こえる）
+const HUMANIZE_VELOCITY = 0.1; // 揺らぎ 1 のとき、音の強さを最大 ±0.1 変える
+const GROOVE_GAIN = 1; // 叩いたズレ（groove）を何倍にして曲に入れるか
+const GROOVE_MAX_BEATS = 0.125; // ノリのズレは 1拍の 1/4 まで（16分音符ぶん以上ずれると、リズムが別物になるため）
+const DRIFT_GAIN = 1.5; // テンポの変化（tempoDrift）を何倍にするか（設計図の ±10% → 曲では ±25%）
 const SOUND_CC = { reverb: 91, attack: 73, release: 72, brightness: 74 };
 const DENSITY_THIN_MAX = 0.6; // density 0 のとき、弱い位置の音を間引く割合
-const DENSITY_ADD_MAX = 0.35; // density 1 のとき、空いている16分音符の位置にスネアの小さな音を足す割合
+const DENSITY_ADD_MAX = 0.15; // density 1 のとき、空いている16分音符の位置にスネアの小さな音を足す割合
 const GHOST_SNARE = 38;
 const GHOST_VELOCITY = 0.25;
 const KICKS_SNARES = [...DRUM_NOTES.kick, ...DRUM_NOTES.snare];
 const ENERGY_VELOCITY_MIN = 0.65; // energy 0 のときの音の強さの倍率（0.5 で 1 倍）
 const ENERGY_BOOST_MAX = 0.5; // energy 1 のとき、音の強さを 1 までの残りの半分だけ上げる（大きい音も小さい音も強くなる）
-const ENERGY_SPARSE = 0.4; // これ未満の区間はハイハットを抜く（静かな区間。スネアは残して拍は保つ）
+const ENERGY_SPARSE = 0.4; // これ未満の区間はハイハットを小さくする（静かな区間。消すと途切れて聞こえるので小さくするだけ）
+const QUIET_HAT_VELOCITY = 0.4; // 静かな区間のハイハットの強さの倍率
 
 export function editMidiByBlueprint(source, input, songKey = null, { bars: barsOption = null, layout = null } = {}) {
   const bp = normalizeBlueprint(input);
@@ -196,13 +197,13 @@ export function editMidiByBlueprint(source, input, songKey = null, { bars: barsO
   const grooveLimitAt = (ticks) => (GROOVE_MAX_BEATS * 60) / bpmAt(ticks); // ノリのズレの上限（秒）
 
   // 7. ノリと揺らぎ: 拍の中の位置に合わせて groove のズレを足し（拍と拍の間は前後のズレを直線でつなぐ）、
-  //    揺らぎ（1 − stability）の分だけ時刻と強さを揺らす。同じトラック・同じ時刻の音（和音）は同じだけずらす
+  //    揺らぎ（1 − stability）の分だけ時刻と強さを揺らす。同じ時刻の音は、全部のトラックで同じだけずらす（楽器どうしがずれない）
   const humanize = useTaps ? round(1 - bp.stability) : 0;
   const hasGroove = useTaps && is44 && bp.groove.some((s) => s !== 0);
   if (hasGroove || humanize > 0) {
     const random = seededRandom(hashString(JSON.stringify(bp)));
+    const shiftAt = new Map(); // 元の時刻 → ずらす秒（全部のトラックで共通）
     for (const track of midi.tracks) {
-      const shiftAt = new Map(); // 元の時刻 → ずらす秒
       for (const note of track.notes) {
         if (!shiftAt.has(note.ticks)) {
           let sec = (random() * 2 - 1) * HUMANIZE_TIME_SEC * humanize;
@@ -320,17 +321,31 @@ function applySections(midi, parts, bp, ranges) {
   const ppq = midi.header.ppq;
   const quiet = [];
   const pauses = [];
-  for (const range of ranges) {
+  const energyOf = (i) => bp.sections[i]?.energy ?? 0.5; // イントロ・アウトロは 0.5（そのまま）
+  // 区間の頭の1拍は、前の区間の強さからなめらかにつなぐ（急に変わらないように）。アウトロの頭の1拍も、最後の問から 0.5 へつなぐ
+  const blended = (into, from, to) => (into < ppq ? from + (to - from) * (into / ppq) : to);
+  const hatFactorOf = (i) => (energyOf(i) < ENERGY_SPARSE ? QUIET_HAT_VELOCITY : 1); // 静かな区間のハイハットの倍率
+  for (const [i, range] of ranges.entries()) {
     const sec = bp.sections[range.q - 1];
     if (!sec) continue;
     const inside = (n) => n.ticks >= range.from && n.ticks < range.to;
-    for (const track of midi.tracks) for (const n of track.notes) if (inside(n)) n.velocity = energyVelocity(n.velocity, sec.energy);
-    if (sec.energy < ENERGY_SPARSE) {
-      for (const track of parts.drums) track.notes = track.notes.filter((n) => !(inside(n) && DRUM_NOTES.hat.includes(n.midi)));
-      quiet.push(range.q);
+    const before = i > 0 ? energyOf(i - 1) : 0.5;
+    for (const track of midi.tracks) {
+      for (const n of track.notes) if (inside(n)) n.velocity = energyVelocity(n.velocity, blended(n.ticks - range.from, before, sec.energy));
     }
-    // 迷い: 0.25 未満は休まない・0.75 未満は半拍・それ以上は1拍
-    const beats = sec.hesitation < 0.25 ? 0 : sec.hesitation < 0.75 ? 0.5 : 1;
+    // 静かな区間のハイハットも、区間の頭の1拍で前の区間の大きさからつなぐ（前が静かなら最初から小さいまま）
+    const hatBefore = i > 0 ? hatFactorOf(i - 1) : 1;
+    const hatNow = hatFactorOf(i);
+    if (hatNow !== 1 || hatBefore !== 1) {
+      for (const track of parts.drums) {
+        for (const n of track.notes) {
+          if (inside(n) && DRUM_NOTES.hat.includes(n.midi)) n.velocity = clamp(n.velocity * blended(n.ticks - range.from, hatBefore, hatNow), 0.05, 1);
+        }
+      }
+    }
+    if (sec.energy < ENERGY_SPARSE) quiet.push(range.q);
+    // 迷い: 0.25 以上で頭のメロディを半拍休む
+    const beats = sec.hesitation < 0.25 ? 0 : 0.5;
     if (beats && parts.melody) {
       const gapEnd = range.from + beats * ppq;
       // 休みの中で始まる音: 休みのあとまで続く音は頭を休みの終わりまで遅らせて残し、休みの中で終わる音は消す
@@ -344,6 +359,19 @@ function applySections(midi, parts, bp, ranges) {
       });
       parts.melody.notes.sort((a, b) => a.ticks - b.ticks);
       pauses.push({ q: range.q, beats });
+    }
+  }
+  const last = ranges.at(-1);
+  if (last && bp.sections[last.q - 1]) {
+    for (const track of midi.tracks) {
+      for (const n of track.notes) {
+        const into = n.ticks - last.to;
+        if (into < 0 || into >= ppq) continue;
+        n.velocity = energyVelocity(n.velocity, blended(into, energyOf(last.q - 1), 0.5));
+        if (DRUM_NOTES.hat.includes(n.midi) && parts.drums.includes(track)) {
+          n.velocity = clamp(n.velocity * blended(into, hatFactorOf(last.q - 1), 1), 0.05, 1);
+        }
+      }
     }
   }
   return { quiet, pauses };
