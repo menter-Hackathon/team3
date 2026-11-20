@@ -412,10 +412,6 @@ const PAUSE_ICON = '<path d="M6 4h4v16H6zM14 4h4v16h-4z" fill="currentColor" />'
 function listenScreen({ wav, score, titleResult }) {
   const url = URL.createObjectURL(wav);
   const audio = new Audio(url); // 画面で聞く曲＝持ち帰る曲（同じ WAV）
-  cleanups.push(() => {
-    audio.pause();
-    URL.revokeObjectURL(url);
-  });
 
   const icon = svg(PLAY_ICON, { viewBox: "0 0 24 24" });
   const fill = h("div", { class: "fill" });
@@ -467,6 +463,11 @@ function listenScreen({ wav, score, titleResult }) {
     h("p", { class: "file" }, filename),
     h("button", { class: "link", onclick: startScreen }, "はじめから"),
   );
+  // 画面を離れるときに音を止め、曲の URL を捨てる。show() は前の画面の後片付けを先に行うので、表示したあとで登録する
+  cleanups.push(() => {
+    audio.pause();
+    URL.revokeObjectURL(url);
+  });
 }
 
 // 今いる区間の名前（score.structure の name: "intro" | "q1"…"q10" | "outro"）
