@@ -82,7 +82,9 @@ UI（src/main.js）が順番に呼ぶ
 - `src/input/voice.js`（入力。`analyzeVoice`・`detectSpeech`・`trimBuffer` は出力の `toBlueprint` が使う）
   - `recordVoice(ms = 5000)` → 声の WAV（`Blob`）`| null`
   - `analyzeVoice(buffer)` → `VoiceFeatures`
-- `src/input/tap.js`（入力。`analyzeTaps` は出力が使う）：`analyzeTaps(tapTimesMs)` → `Taps | null`（4回未満なら `null`）
+- `src/input/tap.js`（入力。`analyzeTaps` は出力が使う）
+  - `measureTapIntervals(tapTimesMs)` → 叩いた間隔（ミリ秒）の配列 `| null`（UI が `tapIntervalsMs` に入れる。4回未満なら `null`）
+  - `analyzeTaps(tapTimesMs)` → `Taps | null`（4回未満なら `null`）
 - `src/input/quiz.js`（入力・うごてん）：`QUESTIONS`・`CHOICES`・`scoreQuiz(answers)` → `Traits`
 - `src/input/toBlueprint.js`（出力）：`toBlueprint(materials)` → `Promise<{ blueprint, assets }>`（例外を投げない。WAV の読み込みがあるので async）
 - `src/sensor/heart.js`（センサー・任意）：`connectHeart(url)` → `HeartConnection | null`

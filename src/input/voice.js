@@ -1,10 +1,12 @@
 // 【入力】声を録音して、特徴（大きさ・速さ・間・リズム・アクセント・高さの動き・澄み/明るさ）を数字にする。
 // 声は個人情報なので、ブラウザの中だけで使い、保存・送信しない。
 //
-// recordVoice(ms)      → { buffer, rawBuffer, features } / null（マイクが使えない・声が入っていない）
-//   buffer    前後の無音を切った AudioBuffer（曲の最初と最後に流す・楽器にする声）
-//   rawBuffer 切る前の録音そのままの AudioBuffer（音として別の使い方をしたい人向け）
-// analyzeVoice(buffer) → features（声が入っていなければ { duration, loudness: 0, pitchHz: null }）
+// recordVoice(ms)      → 声の WAV（Blob、audio/wav、16bit・モノラル）/ null（マイクが使えない・声が入っていない）
+//   切る前の録音そのまま。UI がそのまま materials.voiceWav として出力の toBlueprint に渡す
+//   （無音を切る・特徴を測るのは toBlueprint が detectSpeech・analyzeVoice・trimBuffer で行う）
+// analyzeVoice(buffer, speech?) → features（声が入っていなければ { duration, loudness: 0, pitchHz: null }）
+// detectSpeech(data, sampleRate) → 声のある区間 / null
+// trimBuffer(raw, speech) → { buffer: 前後の無音を切った AudioBuffer, start: 切り出し開始位置（サンプル） }
 //
 // features（時刻はすべて秒。「声が始まったところ」を 0 とする。割合・強さは 0〜1）
 //   大きさ   loudness            話している部分の大きさ（RMS）
@@ -30,8 +32,8 @@
 //            brightness          声の明るさ（高い音の成分の多さ、0〜1）
 //            spectralCentroidHz  brightness のもとの値（Hz）
 //   動き     loudnessContour     [[時刻, 大きさ], …] 0.1 秒ごとの大きさの動き
-//   そのほか duration            buffer の長さ（秒）
-//            onsetInBuffer       buffer の中で声が始まる時刻（秒）
+//   そのほか duration            analyzeVoice に渡した buffer の長さ（秒）
+//            onsetInBuffer       その buffer の中で声が始まる時刻（秒）
 // 取れなかった特徴は null（高さが取れない録音なら pitchHz 系は null、音節が少なすぎるなら speed・rhythm・accent は null）。
 import * as Tone from "tone";
 import { clamp, median } from "../util.js";
@@ -58,7 +60,7 @@ const CENTROID_LOW_HZ = 500; // brightness: この重心なら 0
 const CENTROID_HIGH_HZ = 3000; // この重心なら 1
 const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 
-// ms ミリ秒録音する。失敗しても例外は投げず null を返す（声なしで曲を作る）
+// ms ミリ秒録音して、声の WAV（Blob）を返す。失敗しても例外は投げず null を返す（声なしで曲を作る）
 export async function recordVoice(ms = 5000) {
   let stream = null;
   try {
@@ -78,20 +80,52 @@ export async function recordVoice(ms = 5000) {
 
     const blob = new Blob(chunks, { type: recorder.mimeType });
     const raw = await Tone.getContext().decodeAudioData(await blob.arrayBuffer());
-    const speech = detectSpeech(raw.getChannelData(0), raw.sampleRate);
-    if (!speech) return null; // 何も話していない
+    const mono = toMono(raw);
+    if (!detectSpeech(mono, raw.sampleRate)) return null; // 何も話していない
 
-    const features = analyzeVoice(raw, speech); // 切る前の録音で測る（話し始めるまでの時間も分かる）
-    const { buffer, start } = trimBuffer(raw, speech);
-    features.duration = buffer.duration;
-    features.onsetInBuffer = round((speech.first * speech.frame - start) / raw.sampleRate);
-    return { buffer, rawBuffer: raw, features };
+    return encodeWavBlob(mono, raw.sampleRate);
   } catch (error) {
     console.warn("声を録音できませんでした", error);
     return null;
   } finally {
     stream?.getTracks().forEach((track) => track.stop());
   }
+}
+
+// チャンネルを平均して1本にする（マイクがステレオで返しても、声の大きさが変わらないように）
+function toMono(buffer) {
+  if (buffer.numberOfChannels === 1) return buffer.getChannelData(0);
+  const out = new Float32Array(buffer.length);
+  for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
+    const data = buffer.getChannelData(ch);
+    for (let i = 0; i < out.length; i++) out[i] += data[i] / buffer.numberOfChannels;
+  }
+  return out;
+}
+
+// -1〜1 の音 → WAV（16bit PCM・モノラル）の Blob。
+// 出力の wav.js と同じ形式だが、入力と出力は直接呼び合わない決まりなので、入力の中に小さく持つ
+function encodeWavBlob(samples, sampleRate) {
+  const view = new DataView(new ArrayBuffer(44 + samples.length * 2));
+  const text = (offset, s) => [...s].forEach((c, i) => view.setUint8(offset + i, c.charCodeAt(0)));
+  text(0, "RIFF");
+  view.setUint32(4, 36 + samples.length * 2, true);
+  text(8, "WAVE");
+  text(12, "fmt ");
+  view.setUint32(16, 16, true); // fmt の大きさ
+  view.setUint16(20, 1, true); // PCM
+  view.setUint16(22, 1, true); // モノラル
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true); // 1秒あたりのバイト数
+  view.setUint16(32, 2, true); // 1サンプルのバイト数
+  view.setUint16(34, 16, true); // 16bit
+  text(36, "data");
+  view.setUint32(40, samples.length * 2, true);
+  for (let i = 0; i < samples.length; i++) {
+    const v = clamp(samples[i], -1, 1);
+    view.setInt16(44 + i * 2, v < 0 ? v * 0x8000 : v * 0x7fff, true);
+  }
+  return new Blob([view.buffer], { type: "audio/wav" });
 }
 
 // 声の特徴。声が入っていなければ { duration, loudness: 0, pitchHz: null }（受け渡しのルールの最小の形）。
