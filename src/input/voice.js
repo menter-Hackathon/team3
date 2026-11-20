@@ -1,7 +1,7 @@
 // 【入力】声を録音して、特徴（大きさ・速さ・間・リズム・アクセント・高さの動き・澄み/明るさ）を数字にする。
 // 声は個人情報なので、ブラウザの中だけで使い、保存・送信しない。
 //
-// recordVoice(ms, { onStart }?) → 声の WAV（Blob、audio/wav、16bit・モノラル）/ null（マイクが使えない・声が入っていない）
+// recordVoice(ms)      → 声の WAV（Blob、audio/wav、16bit・モノラル）/ null（マイクが使えない・声が入っていない）
 //   切る前の録音そのまま。UI がそのまま materials.voiceWav として出力の toBlueprint に渡す
 //   （無音を切る・特徴を測るのは toBlueprint が detectSpeech・analyzeVoice・trimBuffer で行う）
 // analyzeVoice(buffer, speech?) → features（声が入っていなければ { duration, loudness: 0, pitchHz: null }）
@@ -61,8 +61,7 @@ const CENTROID_HIGH_HZ = 3000; // この重心なら 1
 const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 
 // ms ミリ秒録音して、声の WAV（Blob）を返す。失敗しても例外は投げず null を返す（声なしで曲を作る）
-// onStart: 録音が実際に始まったときに呼ぶ（任意。マイクの許可を待つ間は呼ばれない。画面の残り秒数を合わせるため）
-export async function recordVoice(ms = 5000, { onStart } = {}) {
+export async function recordVoice(ms = 5000) {
   let stream = null;
   try {
     // 分析のため、自動音量調整（大声と小声の差が消える）とエコー除去は切る。ノイズ除去は展示の雑音対策に残す
@@ -75,7 +74,6 @@ export async function recordVoice(ms = 5000, { onStart } = {}) {
     const stopped = new Promise((resolve) => recorder.addEventListener("stop", resolve));
 
     recorder.start();
-    onStart?.();
     await new Promise((resolve) => setTimeout(resolve, ms));
     recorder.stop();
     await stopped;

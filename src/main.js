@@ -138,21 +138,17 @@ function voiceScreen() {
   const record = h("button", {
     onclick: async () => {
       record.disabled = true;
-      label.textContent = "準備中";
-      let stopCountdown = () => {};
-      const voiceWav = await recordVoice(VOICE_MS, {
-        onStart: () => {
-          const startedAt = performance.now();
-          label.textContent = "録音中";
-          status.textContent = "話してください……";
-          level.value = 0.6;
-          stopCountdown = every(() => {
-            const t = Math.min(1, (performance.now() - startedAt) / VOICE_MS);
-            progress.style.strokeDashoffset = 597 * (1 - t);
-            count.textContent = String(Math.ceil((VOICE_MS / 1000) * (1 - t)));
-          }, 50);
-        },
-      });
+      label.textContent = "録音中";
+      status.textContent = "話してください……";
+      level.value = 0.6;
+      // 残り秒数は押した時から数える（初回はマイクの許可を待つ分だけ、実際の録音より先に進むことがある）
+      const startedAt = performance.now();
+      const stopCountdown = every(() => {
+        const t = Math.min(1, (performance.now() - startedAt) / VOICE_MS);
+        progress.style.strokeDashoffset = 597 * (1 - t);
+        count.textContent = String(Math.ceil((VOICE_MS / 1000) * (1 - t)));
+      }, 50);
+      const voiceWav = await recordVoice(VOICE_MS);
       stopCountdown();
       level.value = 0.04;
       materials.voiceWav = voiceWav;
