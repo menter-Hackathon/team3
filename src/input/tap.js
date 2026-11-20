@@ -7,6 +7,15 @@ const GROOVE_LIMIT = 0.05; // groove は ±50ms まで
 const OUTLIER_BEATS = 0.3; // 拍の位置から 0.3 拍以上はずれた叩きは、叩き損じ・裏拍として推定から外す
 const STABILITY_SCALE = 0.15; // 拍のバラつきがこの割合（拍の長さに対して）以上なら安定度 0
 
+// 叩いた時刻（ミリ秒、performance.now()）の配列 → 叩いた間隔（ミリ秒）の配列。UI が materials.tapIntervalsMs として渡す。
+// 間隔が3個未満（叩いたのが4回未満）なら null（docs/interfaces.md の「4. 材料」）
+export function measureTapIntervals(tapTimesMs) {
+  if (!Array.isArray(tapTimesMs)) return null;
+  const times = tapTimesMs.filter(Number.isFinite);
+  const intervals = times.slice(1).map((t, i) => t - times[i]);
+  return intervals.length >= 3 ? intervals : null;
+}
+
 // tapTimesMs: 叩いた時刻（ミリ秒、performance.now()）の配列。少なすぎるときは null
 // → { bpm, groove: [4拍分の秒], stability: 0〜1（叩くたびのバラつきの小ささ）, count }
 export function analyzeTaps(tapTimesMs) {

@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>入力の動作確認</title>
+  <!--
+    入力1（声・叩き・10問）の動作確認用ページ。開発用で、本番の画面（index.html）には含まれない。
+    npm run dev で起動して、表示された URL の /dev/input-test.html を開く（例: http://localhost:5173/dev/input-test.html）。
+    声・叩き・答えは、このページの中だけで使う。保存も送信もしない。
+  -->
+  <style>
+    :root { color-scheme: light dark; --line: #8884; --accent: #3b82f6; --warn: #ef4444; }
+    body { font-family: system-ui, "Hiragino Sans", "Yu Gothic", sans-serif; max-width: 780px; margin: 0 auto; padding: 16px; line-height: 1.6; }
+    h1 { font-size: 20px; margin: 8px 0 4px; }
+    h2 { font-size: 17px; margin: 0 0 8px; }
+    .note { font-size: 13px; opacity: 0.75; margin: 0 0 12px; }
+    section { border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; margin: 16px 0; }
+    button { font: inherit; padding: 6px 14px; border-radius: 8px; border: 1px solid var(--line); background: var(--accent); color: #fff; cursor: pointer; }
+    button.sub { background: transparent; color: inherit; }
+    button:disabled { opacity: 0.5; cursor: default; }
+    input[type="number"] { width: 5em; font: inherit; padding: 4px; }
+    .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; }
+    .status { min-height: 1.6em; font-size: 14px; }
+    .theme { font-size: 18px; font-weight: 600; margin: 4px 0; }
+    table { border-collapse: collapse; width: 100%; font-size: 14px; }
+    td, th { padding: 4px 6px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: middle; }
+    td.hint { font-size: 12px; opacity: 0.7; }
+    .bar { display: inline-block; width: 90px; height: 8px; background: var(--line); border-radius: 4px; vertical-align: middle; margin-left: 6px; overflow: hidden; }
+    .bar i { display: block; height: 100%; background: var(--accent); }
+    .center { position: relative; }
+    .center::after { content: ""; position: absolute; left: 50%; top: -2px; bottom: -2px; width: 1px; background: currentColor; opacity: 0.5; }
+    canvas { width: 100%; height: 180px; border: 1px solid var(--line); border-radius: 8px; }
+    .legend { font-size: 12px; opacity: 0.75; }
+    .pad { height: 150px; border: 2px dashed var(--accent); border-radius: 12px; display: grid; place-items: center; font-size: 22px; user-select: none; touch-action: manipulation; cursor: pointer; }
+    .pad.active { background: #3b82f622; }
+    .q { padding: 8px 0; border-bottom: 1px solid var(--line); }
+    .q p { margin: 0 0 4px; }
+    .q label { margin-right: 10px; font-size: 13px; white-space: nowrap; cursor: pointer; }
+    details { margin-top: 8px; font-size: 13px; }
+    pre { overflow: auto; max-height: 260px; background: #8881; padding: 8px; border-radius: 6px; font-size: 12px; }
+    .null { color: var(--warn); }
+  </style>
+</head>
+<body>
+  <h1>入力の動作確認</h1>
+  <p class="note">声・叩き・10問を試して、出てくる数字を確認するページです。開発用で、保存も送信もしません。</p>
+
+  <section id="voice">
+    <h2>1. 声</h2>
+    <p class="note">テーマに沿って話してください。マイクの許可が必要です。</p>
+    <div class="theme" id="theme"></div>
+    <div class="row">
+      録音の長さ <input id="voice-sec" type="number" min="2" max="30" value="8" /> 秒
+      <button id="rec">録音する</button>
+      <button id="synth" class="sub">合成の声でテスト（マイクなし）</button>
+    </div>
+    <div class="status" id="voice-status"></div>
+    <div id="voice-result"></div>
+  </section>
+
+  <section id="tap">
+    <h2>2. 叩き</h2>
+    <p class="note">下の枠を好きなリズムで叩いてください。最初に叩いてから10秒で解析します。</p>
+    <div class="pad" id="pad">ここを叩く</div>
+    <div class="row">
+      <button id="tap-done" class="sub">今すぐ解析</button>
+      <button id="tap-reset" class="sub">やり直す</button>
+    </div>
+    <div class="status" id="tap-status"></div>
+    <div id="tap-result"></div>
+  </section>
+
+  <section id="quiz">
+    <h2>3. 10問</h2>
+    <p class="note">答えるたびに、下の点数がすぐ変わります。</p>
+    <div class="row">
+      <button class="sub" id="fill-mid">全部「どちらでもない」</button>
+      <button class="sub" id="fill-high">全部「強くそう思う」</button>
+      <button class="sub" id="fill-random">ランダム</button>
+      <button class="sub" id="fill-clear">クリア</button>
+    </div>
+    <div id="questions"></div>
+    <h2 style="margin-top:12px">結果（5つの特性、0〜1）</h2>
+    <div id="quiz-result"></div>
+  </section>
+
+  <section id="out">
+    <h2>4. 出力に渡す</h2>
+    <p class="note">ここまでの材料（声の WAV・叩いた間隔・10問の答え）を、出力の toBlueprint にそのまま渡して、届いたかを確かめます。</p>
+    <div class="row"><button id="handoff">toBlueprint に渡す</button></div>
+    <div id="handoff-result"></div>
+  </section>
+
+  <script type="module" src="./inputTestPage.js"></script>
+</body>
+</html>
