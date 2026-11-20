@@ -17,7 +17,7 @@ import * as Tone from "tone";
 import { defaultBlueprint } from "../blueprint.js";
 import { soundFromBlueprint } from "./soundSettings.js";
 
-const KNOWN_TRACKS = ["voice", "pad", "bass", "melody", "kick", "snare", "hat", "blink"];
+export const KNOWN_TRACKS = ["voice", "pad", "bass", "melody", "kick", "snare", "hat", "blink"];
 const DEFAULT_SOUND = soundFromBlueprint(defaultBlueprint()); // 楽譜に sound がないとき
 const DEFAULT_TIMBRE = defaultBlueprint().timbre;
 

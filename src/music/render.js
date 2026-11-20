@@ -13,7 +13,7 @@
 //   部分ごとに、そこで鳴り始める音だけを入れると、部品が処理される時間が短くなる。部分どうしは別々のスレッドで同時に書き出される
 //   音は鳴り始めた部分の中で最後（リリースとリバーブの余韻）まで鳴らすので、部分の境目で音が切れない。楽器と音色は sound.js のまま
 import * as Tone from "tone";
-import { scheduleSong, MAX_VOICE_SEC } from "./sound.js";
+import { scheduleSong, MAX_VOICE_SEC, KNOWN_TRACKS } from "./sound.js";
 import { audioBufferToWav } from "./wav.js";
 
 export const SAMPLE_RATE = 44100;
@@ -21,8 +21,13 @@ const CHANNELS = 2;
 const MAX_DURATION = 180; // 秒。楽譜がおかしくて長すぎるときに止める
 const VOICE_TAIL = 1.5; // 秒。最後の声のあとに残す余韻
 const PART_SEC = 8; // 秒。1つの部分の長さ（サンプル数が整数になる長さにする）
-const NOTE_TAIL = 2; // 秒。音の長さのあとに残す最小の余韻（キックのリリースなど）
+// 秒。音の長さのあとに残す最小の余韻。sound.js の楽器でリリースが一番長いのはキック（0.3 秒＋リリース 1.4 秒）、
+// 鐘は 0.3＋0.8 秒。パッドとメロディのリリースは score.sound から足す。sound.js でこれより長く残る楽器を足したら、ここも伸ばす
+const NOTE_TAIL = 2;
 const MAX_REVERB_SEC = 10; // 楽譜に sound がないときに見込むリバーブの長さ
+// 同時に1音しか鳴らない楽器のトラック。元は次の音が来ると前の音が止まるので、部分の境目をまたぐ音は次の音の時刻で切る
+// （ドラムは sound.js で長さが決まっていて短く、余韻も小さいので切らない）
+const MONO_TRACKS = ["bass"];
 
 export async function renderSong(score, assets = { voice: null }) {
   if (!score || !score.tracks) throw new Error("楽譜がありません");
@@ -48,24 +53,33 @@ export async function renderSong(score, assets = { voice: null }) {
 
 // 部分ごとに楽器を作って音を予約し（ここは順番に）、そのあと全部の部分を同時に書き出す
 // scheduleSong は最初の await（リバーブの準備）より前に楽器を全部作るので、そのあいだだけ、その部分の context を既定にしておく
+// 書き出しは途中で止められないので、どれかが失敗しても全部が終わるのを待ってから、書き出し用の context をすべて片付ける
 async function renderParts(parts, assets) {
   const original = Tone.getContext();
   const jobs = [];
   try {
-    for (const part of parts) {
-      const context = new Tone.OfflineContext(CHANNELS, part.length, SAMPLE_RATE);
-      Tone.setContext(context);
-      jobs.push({ context, scheduled: scheduleSong(part.score, part.hasVoice ? assets : { voice: null }) });
+    try {
+      for (const part of parts) {
+        const context = new Tone.OfflineContext(CHANNELS, part.length, SAMPLE_RATE);
+        Tone.setContext(context);
+        jobs.push({ context, scheduled: scheduleSong(part.score, part.hasVoice ? assets : { voice: null }) });
+      }
+    } finally {
+      Tone.setContext(original);
     }
+    const results = await Promise.allSettled(
+      jobs.map(async ({ context, scheduled }) => {
+        await scheduled;
+        return context.render();
+      }),
+    );
+    const failed = results.find((r) => r.status === "rejected");
+    if (failed) throw failed.reason;
+    return results.map((r) => r.value);
   } finally {
-    Tone.setContext(original);
+    await Promise.allSettled(jobs.map((job) => job.scheduled));
+    for (const { context } of jobs) context.dispose();
   }
-  return Promise.all(
-    jobs.map(async ({ context, scheduled }) => {
-      await scheduled;
-      return context.render();
-    }),
-  );
 }
 
 // 楽譜を PART_SEC 秒ずつの部分に分ける。音は鳴り始める部分に入れ、時刻はその部分の頭からに直す
@@ -82,21 +96,35 @@ export function splitScore(score, assets, total = songLength(score, assets)) {
   const starts = [0];
   for (let t = PART_SEC; t < lastCut; t += PART_SEC) starts.push(t);
 
+  const partIndex = (time) => {
+    let i = starts.length - 1;
+    while (i > 0 && time < starts[i]) i--;
+    return i;
+  };
   const parts = starts.map((offset) => ({ offset, tracks: {}, end: 0, hasVoice: false }));
   for (const [name, events] of Object.entries(score.tracks)) {
-    for (const e of events ?? []) {
-      let i = starts.length - 1;
-      while (i > 0 && e.time < starts[i]) i--;
+    if (!KNOWN_TRACKS.includes(name)) {
+      console.warn(`楽譜の知らないトラック「${name}」は鳴らしません`);
+      continue;
+    }
+    const list = events ?? [];
+    list.forEach((original, k) => {
+      const e = { ...original };
+      const i = partIndex(e.time);
+      const next = list[k + 1];
+      if (MONO_TRACKS.includes(name) && next && partIndex(next.time) !== i && e.duration > next.time - e.time) {
+        e.duration = Math.max(0, next.time - e.time);
+      }
       const part = parts[i];
       (part.tracks[name] ??= []).push({ ...e, time: e.time - part.offset });
       if (name === "voice") {
-        if (!voiceSec) continue; // 声がないときは鳴らないので、長さに入れない
+        if (!voiceSec) return; // 声がないときは鳴らないので、長さに入れない
         part.hasVoice = true;
         part.end = Math.max(part.end, e.time - part.offset + (e.duration ?? voiceSec) + voiceTail);
       } else {
         part.end = Math.max(part.end, e.time - part.offset + (e.duration ?? 0) + noteTail);
       }
-    }
+    });
   }
   return parts
     .filter((p) => p.end > 0)
