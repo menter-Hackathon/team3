@@ -47,10 +47,12 @@ let blinkSession = null; // { promise, tracker, abandoned }
 function startBlinkSession() {
   if (!useBlinks || blinkSession) return;
   const session = { tracker: null, abandoned: false };
-  session.promise = startBlinks().then((tracker) => {
-    if (session.abandoned) tracker?.stop(); // 10問が先に終わっていたら、すぐ止める
-    else session.tracker = tracker;
-  });
+  session.promise = startBlinks()
+    .then((tracker) => {
+      if (session.abandoned) tracker?.stop(); // 10問が先に終わっていたら、すぐ止める
+      else session.tracker = tracker;
+    })
+    .catch((error) => console.warn("瞬きを始められませんでした（瞬きなしで進めます）", error)); // startBlinks は null を返す作りだが念のため
   blinkSession = session;
 }
 
