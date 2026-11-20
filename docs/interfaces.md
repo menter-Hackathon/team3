@@ -10,7 +10,7 @@
 ```
 UI（src/main.js）が順番に呼ぶ
   入力:     recordVoice()（声の WAV）/ 叩いた間隔 / 10問の答え
-  センサー: connectHeart() / captureFace()（任意。作られていれば使う）
+  センサー: connectHeart() / startBlinks()（瞬き、案） / captureFace()（任意。作られていれば使う）
         ↓ 材料（Materials）……入力と出力の境目はこれだけ
   出力: toBlueprint(materials)      声・叩く＝たいが、質問＝うごてん（心拍・顔は取れたときだけ）
         ↓ 設計図（Blueprint）……出力の中で、ここより後ろは材料を直接見ない
@@ -26,7 +26,7 @@ UI（src/main.js）が順番に呼ぶ
 
 ### どのファイルからどのファイルへ
 
-ブラウザの中のファイルどうしは、`main.js` が関数を呼び、戻り値を次のファイルの関数に渡す。ファイルはすべて `src/` の中（`input/`：voice・tap・quiz・toBlueprint、`sensor/`：heart・face、`music/`：compose・sound・render・wav、`visual/`：sketch）。
+ブラウザの中のファイルどうしは、`main.js` が関数を呼び、戻り値を次のファイルの関数に渡す。ファイルはすべて `src/` の中（`input/`：voice・tap・quiz・toBlueprint、`sensor/`：heart・blink・face、`music/`：compose・sound・render・wav、`visual/`：sketch）。
 
 名前は、そのまま変数名・引数名に使う。
 
@@ -35,7 +35,8 @@ UI（src/main.js）が順番に呼ぶ
 - 10問の答え `quiz`：`main.js` → `toBlueprint.js`（JS オブジェクトの配列 `[{ value, responseMs }]` / `null`。点数は `toBlueprint.js` が `quiz.js` の `scoreQuiz` で出す）
 - 心拍 `heart`：`heart.js` → `toBlueprint.js`（JS オブジェクト `{ bpm }` / `null`）
 - 顔の音色 `face`：`face.js` → `toBlueprint.js`（JS オブジェクト `{ timbre }` / `null`）
-- 材料まとめ `materials`：`main.js` → `toBlueprint.js`（JS オブジェクト `{ voiceWav, tapIntervalsMs, quiz, heart, face }`）
+- 瞬き `blinks`（案）：`blink.js` → `main.js` → `toBlueprint.js`（JS オブジェクト `{ timesMs, count, perMinute }` / `null`。UI が `startBlinks()` で返った tracker の `summarize()` でまとめて渡す）
+- 材料まとめ `materials`：`main.js` → `toBlueprint.js`（JS オブジェクト `{ voiceWav, tapIntervalsMs, quiz, heart, face, blinks }`。`blinks` は案）
 - 設計図 `blueprint`：`toBlueprint.js` → `compose.js`（JSON にできる形の JS オブジェクト。`sketch.js` と `/api/title` にも渡す）
 - 原曲 `songs`：`compose.js` が読む（MIDI ファイル4つ。「6. 原曲」）
 - 楽譜 `score`：`compose.js` → `render.js` → `sound.js`（JSON にできる形の JS オブジェクト）
@@ -66,7 +67,7 @@ UI（src/main.js）が順番に呼ぶ
 ### 欠けたとき・失敗したとき
 - 取れなかった材料は `null`。`undefined` や空のオブジェクトにしない。
 - 入力の関数は、許可されない・機器がない・失敗した、のどれでも**例外を投げずに `null` を返す**。UI は `null` なら次へ進む。
-- マイク・カメラを開いた関数は、値を返す前に必ず閉じる。
+- マイク・カメラを開いた関数は、値を返す前に必ず閉じる。例外は `startBlinks()`（測り続けるので、返した tracker の `stop()` で閉じる）。
 - 受け取る側は値を信じすぎない。曲側は必ず `normalizeBlueprint()` を通してから使う。
 - 例外を投げてよいのは `compose`（原曲の MIDI が読めないとき）と `renderSong` だけ（曲が作れないのは致命的なので）。UI はエラー画面を出す。
 
@@ -81,10 +82,13 @@ UI（src/main.js）が順番に呼ぶ
 - `src/input/voice.js`（入力。`analyzeVoice`・`detectSpeech`・`trimBuffer` は出力の `toBlueprint` が使う）
   - `recordVoice(ms = 5000)` → 声の WAV（`Blob`）`| null`
   - `analyzeVoice(buffer)` → `VoiceFeatures`
-- `src/input/tap.js`（入力。`analyzeTaps` は出力が使う）：`analyzeTaps(tapTimesMs)` → `Taps | null`（4回未満なら `null`）
+- `src/input/tap.js`（入力。`analyzeTaps` は出力が使う）
+  - `measureTapIntervals(tapTimesMs)` → 叩いた間隔（ミリ秒）の配列 `| null`（UI が `tapIntervalsMs` に入れる。4回未満なら `null`）
+  - `analyzeTaps(tapTimesMs)` → `Taps | null`（4回未満なら `null`）
 - `src/input/quiz.js`（入力・うごてん）：`QUESTIONS`・`CHOICES`・`scoreQuiz(answers)` → `Traits`
 - `src/input/toBlueprint.js`（出力）：`toBlueprint(materials)` → `Promise<{ blueprint, assets }>`（例外を投げない。WAV の読み込みがあるので async）
 - `src/sensor/heart.js`（センサー・任意）：`connectHeart(url)` → `HeartConnection | null`
+- `src/sensor/blink.js`（センサー・任意）：`startBlinks({ video, onBlink })` → `Promise<BlinkTracker | null>`（モデルを読み込んでからカメラを開く。20秒で読み込めなければ `null`）、`tracker.summarize(startMs, endMs)` → `Blinks | null`、`summarizeBlinks(timesMs, startMs, endMs)` → `Blinks`（数えるだけ。1分あたりは `activeMs`〔実際に測れていた時間〕で割る）、`createBlinkDetector(options)`（目の閉じ具合 → 瞬きの判定）
 - `src/sensor/face.js`（センサー・任意）：`captureFace()` → `Face | null`
 - `src/music/compose.js`（出力。原曲の選択・編集＝うごてん、楽譜＝たいが）：`compose(blueprint)` → `Promise<Score>`（原曲の MIDI を読むので async）
 - `src/music/edit/blueprintEdit.js`（出力・うごてん）：`editMidiByBlueprint(midi, blueprint, songKey)` → `{ midi, report }`
@@ -106,21 +110,28 @@ Materials = {
   quiz:  QuizAnswer[] | null,       // 10個。UI が作る
   heart: { bpm: number } | null,    // 30〜220。UI がその時点の値を入れる
   face:  Face | null,
+  blinks: Blinks | null,            // 案。カメラ・モデルが使えない、顔が映っていた時間が半分未満のときは null
 }
 
 // ここから下は出力の中（toBlueprint）で作る
 VoiceFeatures = { duration: 秒, loudness: 0〜1, pitchHz: number | null, … }  // analyzeVoice の結果。今ある項目は src/input/voice.js の先頭に一覧
 Taps          = { bpm: 60〜160 の整数, groove: [秒, 秒, 秒, 秒]（各 ±0.05）, stability: 0〜1（叩くたびのバラつきの小ささ）, count: 叩いた回数 }  // analyzeTaps の結果
-QuizAnswer    = { value: 1〜5（選択肢は5つ。重みは quiz.js の CHOICE_WEIGHTS）, responseMs: 質問を出してから答えるまでのミリ秒 }
+QuizAnswer    = { value: 1〜5（選択肢は5つ。重みは quiz.js の CHOICE_WEIGHTS）, responseMs: 質問を出してから答えるまでのミリ秒, shownAtMs?: 質問を出した時刻（performance.now()。案、瞬きを問ごとに分けるため） }
 Traits        = { extraversion, agreeableness, conscientiousness, neuroticism, openness }  // 各 0〜1
 Face          = { timbre: number[] }  // 1〜16個、各 0〜1、1番目は 1
 HeartConnection = { bpm: number | null（今の値。まだ届いていなければ null）, close(): void }
+Blinks        = { timesMs: number[]（瞬きした時刻、performance.now() のミリ秒）, count: 回数, perMinute: 1分あたりの回数 }  // 案（材料に入れるかは未決定）
+BlinkTracker  = { timesMs, score: 今の目の閉じ具合 0〜1, faceVisible, frames, detector, video, summarize(startMs, endMs): Blinks | null, stop(): void }
 ```
 
 - `quiz` は `QUESTIONS` の順に並べる。途中でやめたら、途中までの配列ではなく `null` にする。
 - `responseMs` は、質問を出した時刻を UI が覚えておいて測る。叩いた時刻も UI が `pointerdown` のたびに集め、隣どうしの差を `tapIntervalsMs` にして渡す。
 - `Traits`（性格の点数）は `toBlueprint` の質問の部分（うごてん）の中だけで使う。設計図には入れない（AI や画面に性格の数字を出さないため）。
 - `connectHeart` は、つながったままの接続を返す。材料として渡すときは、UI がその時点の値を `{ bpm }` にして渡す。
+- 瞬き（案）：UI が10問の前に `startBlinks()` を始め、終わったら `tracker.summarize(1問目を出した時刻, 最後に答えた時刻)` で `blinks` にまとめ、`stop()` する。
+  - モデルの読み込みに数秒かかる。10問が先に終わってから tracker が届いたら、UI は `stop()` して `blinks` は `null` にする。
+  - 問ごとに分けるときは、`timesMs` と `quiz[i].shownAtMs`〜`shownAtMs + responseMs` を比べる（`shownAtMs` は UI が入れる）。
+  - 設計図のどこに使うか（例：瞬きの位置でその問の区間に音を置く、回数で細かさを変える）は、出力（`toBlueprint`・MIDI の編集）の担当と相談して決める（未決定）。決まったら `sources` にも `blinks` を足す。
 
 ## 5. 設計図（出力の中：`toBlueprint` → `compose`）version 1
 
@@ -251,6 +262,7 @@ assets = { voice: AudioBuffer | null }
 
 - 声：WAV と AudioBuffer は 入力 → UI → 出力 の中だけ。サーバー・AI に送らない。保存しない。
 - 顔：`face.js` の外に出すのは `timbre` の数字だけ。画像や点の座標は出さない。
+- 瞬き：`blink.js` の外に出すのは瞬きの時刻の数字だけ。カメラの映像は保存・送信しない。瞬きの多さを性格や気持ちの判定に使わない。
 - 心拍：`bpm` の数字だけ。中継は配るだけで保存しない。
 - 性格：点数（`Traits`）は `toBlueprint` の質問の部分（うごてん）の中だけ。設計図には音楽の数字にしてから入れる。
 - AI に送るのは設計図の数字だけ。
