@@ -240,7 +240,9 @@ assets = { voice: AudioBuffer | null }
 - `renderSong(score, assets)` → WAV の `Blob`（`audio/wav`、44.1kHz・16bit・ステレオ）。一番大きい音が −1 dB になるように曲全体の音量をそろえる（音割れを防ぐ）。書き出す長さは `duration`。最後まで流す声がそれより長く続くときは、「声の終わり ＋ 余韻」まで伸ばす（アウトロの声が途中で切れないように）。余韻は 1.5 秒と声のリバーブの長さ（`score.sound.reverbDecay`。息っぽい声では最大 9 秒）の長いほうなので、WAV は約1分より長くなることがある（例：息っぽさ 1・声 3 秒で約76秒）。
 - 保存するファイル名は `rashisa-YYYYMMDD-HHMM.wav`。名前など個人の情報は入れない。
 - 画面ではこの WAV を `<audio>` で流す（聞いた曲＝持ち帰る曲）。
-- `renderSong` の書き出し中（`Tone.Offline`、数秒〜十数秒）は、Tone.js の全体の設定（context）が書き出し用に切り替わる。書き出しが終わるまで、ほかの音を鳴らしたり Tone.js の楽器・エフェクトを作ったりしない（書き出し用の側に作られて聞こえず、曲に混ざることもある）。UI は書き出し中の画面にしておく。
+- `renderSong` は、曲を 8 秒ずつの部分に分けて同時に書き出し、あとで重ねる（Tone.js の `OfflineContext`。1分の曲で2〜4秒、リバーブが長い曲で8秒ほど）。音は鳴り始めた部分の中で余韻まで鳴らすので、境目で切れない。
+  - Tone.js の全体の設定（context）が書き出し用に切り替わるのは、`renderSong` を呼んだ直後に部分ごとの楽器を作るあいだだけ（同期の処理の中）。それでも書き出しが終わるまでは、ほかの音を鳴らしたり Tone.js の楽器を作ったりせず、UI は書き出し中の画面にしておく。
+  - `scheduleSong`（sound.js）は、最初の `await` より前に楽器を全部作って音を予約すること（あとで作ると、書き出し用の context に入らない）。
 - `drawVisual(container, { blueprint, score, audio })` → `{ remove() }`。`audio` は再生中の `<audio>`。`audio.currentTime` と `score.structure` で、曲の今どこかが分かる。
 
 ## 9. サーバー・アプリとのやり取り

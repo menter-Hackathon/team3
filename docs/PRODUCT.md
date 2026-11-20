@@ -22,7 +22,7 @@
 ## 技術スタック
 
 - 画面: HTML・CSS・JavaScript（Mac の Chrome で動かす）。Vite 8 で開発・ビルド
-- 音: Tone.js 15（声の楽器化は GrainPlayer、書き出しは Tone.Offline → WAV）。DAW は使わない
+- 音: Tone.js 15（声の楽器化は GrainPlayer、書き出しは Tone.js の OfflineContext → WAV。曲を 8 秒ずつに分けて同時に書き出す）。DAW は使わない
 - 原曲: AI で作った4曲の MP3 を、プロダクトの外で MIDI にする（`tools/mp3-to-midi`：Python 3.11・Demucs で楽器ごとに分ける・Basic Pitch で採譜）。MIDI は @tonejs/midi で読み書きして編集する
 - 映像: p5.js 2（使うときだけ読み込む）
 - 表情・輪郭: MediaPipe Face Landmarker（@mediapipe/tasks-vision）
@@ -92,7 +92,7 @@ src/music/midiToScore.js 出力: MIDI → 楽譜（たいが）
 src/music/parts.js      出力・共通: MIDI のトラックの見分け（MIDI の編集と楽譜の両方が使う）
 src/music/soundSettings.js 出力・共通: 設計図 → 音の柔らかさの設定（楽譜・音・MIDI の CC が使う）
 src/music/sound.js      出力: 楽器・音色・エフェクト・音量
-src/music/render.js     出力: 楽譜 → WAV（Tone.Offline）。wav.js が WAV 形式に変換
+src/music/render.js     出力: 楽譜 → WAV（8 秒ずつ同時に書き出して重ねる）。wav.js が WAV 形式に変換
 src/visual/sketch.js    映像（p5.js）
 worker/index.js         サーバー（Cloudflare Worker）: /api/title（AI で曲名）・/api/health
 tools/mp3-to-midi/       出力（プロダクトの外）: 原曲の MP3 → MIDI（うごてん。使い方は README.md）

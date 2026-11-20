@@ -3,7 +3,8 @@
 //
 // scheduleSong(score, assets) → Promise（楽器を作り、楽譜の音をすべて予約する。リバーブの準備ができたら終わる）
 //   assets = { voice: AudioBuffer | null }。声を鳴らすかどうかは assets.voice があるかで決める
-//   render.js の Tone.Offline の中で呼ばれるので、楽器は最後に toDestination() につなぐだけ
+//   render.js の書き出し用の context（OfflineContext）で呼ばれるので、楽器は最後に toDestination() につなぐだけ
+//   楽器は最初の await より前に全部作ること（render.js は、ここまでのあいだだけ書き出し用の context を既定にしている）
 //   楽譜の知らないトラックは無視して console.warn を出す
 //
 // つなぎ方:

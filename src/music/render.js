@@ -3,9 +3,15 @@
 //
 // renderSong(score, assets) → Promise<Blob>（audio/wav、44.1kHz・16bit・ステレオ）
 //   曲が作れないときは例外を投げる（UI がエラー画面を出す）
-//   Tone.Offline で、曲の長さを待たずに一気に書き出す（Tone.start() は要らない）
+//   Tone.js の OfflineContext で、曲の長さを待たずに一気に書き出す（Tone.start() は要らない）
 //   長さは score.duration。声（duration なし＝最後まで）がそれより長く続くときは、声の終わり + 声のリバーブの余韻まで伸ばす
 //   画面ではこの WAV を <audio> で流すと、「聞いた曲」と「持ち帰る曲」が同じになる
+//
+// 速く書き出すために、曲を PART_SEC 秒ずつの「部分」に分けて、同時に書き出してから重ねる
+//   Tone.js は書き出しの前に、曲じゅうの音の部品を全部作ってしまう。作られた部品は、自分が鳴る前から毎回処理されるので、
+//   1分の曲を1回で書き出すと、音の数 × 曲の長さぶん重くなる（パッドの和音が多い曲で20秒以上かかっていた）
+//   部分ごとに、そこで鳴り始める音だけを入れると、部品が処理される時間が短くなる。部分どうしは別々のスレッドで同時に書き出される
+//   音は鳴り始めた部分の中で最後（リリースとリバーブの余韻）まで鳴らすので、部分の境目で音が切れない。楽器と音色は sound.js のまま
 import * as Tone from "tone";
 import { scheduleSong, MAX_VOICE_SEC } from "./sound.js";
 import { audioBufferToWav } from "./wav.js";
@@ -14,16 +20,91 @@ export const SAMPLE_RATE = 44100;
 const CHANNELS = 2;
 const MAX_DURATION = 180; // 秒。楽譜がおかしくて長すぎるときに止める
 const VOICE_TAIL = 1.5; // 秒。最後の声のあとに残す余韻
+const PART_SEC = 8; // 秒。1つの部分の長さ（サンプル数が整数になる長さにする）
+const NOTE_TAIL = 2; // 秒。音の長さのあとに残す最小の余韻（キックのリリースなど）
+const MAX_REVERB_SEC = 10; // 楽譜に sound がないときに見込むリバーブの長さ
 
 export async function renderSong(score, assets = { voice: null }) {
   if (!score || !score.tracks) throw new Error("楽譜がありません");
   if (!(score.duration > 0) || score.duration > MAX_DURATION) throw new Error(`曲の長さがおかしいです（${score.duration} 秒）`);
-  const rendered = await Tone.Offline(async () => {
-    await scheduleSong(score, assets);
-  }, songLength(score, assets), CHANNELS, SAMPLE_RATE);
-  const buffer = rendered.get();
+  const total = songLength(score, assets);
+  const parts = splitScore(score, assets, total);
+  const buffers = await renderParts(parts, assets);
+  const length = Math.ceil(total * SAMPLE_RATE);
+  const channels = Array.from({ length: CHANNELS }, () => new Float32Array(length));
+  parts.forEach((part, i) => {
+    const offset = Math.round(part.offset * SAMPLE_RATE);
+    for (let c = 0; c < CHANNELS; c++) {
+      const data = buffers[i].getChannelData(c);
+      const out = channels[c];
+      const n = Math.min(data.length, length - offset);
+      for (let j = 0; j < n; j++) out[offset + j] += data[j];
+    }
+  });
+  const buffer = { numberOfChannels: CHANNELS, sampleRate: SAMPLE_RATE, length, getChannelData: (c) => channels[c] };
   normalizePeak(buffer);
   return audioBufferToWav(buffer);
+}
+
+// 部分ごとに楽器を作って音を予約し（ここは順番に）、そのあと全部の部分を同時に書き出す
+// scheduleSong は最初の await（リバーブの準備）より前に楽器を全部作るので、そのあいだだけ、その部分の context を既定にしておく
+async function renderParts(parts, assets) {
+  const original = Tone.getContext();
+  const jobs = [];
+  try {
+    for (const part of parts) {
+      const context = new Tone.OfflineContext(CHANNELS, part.length, SAMPLE_RATE);
+      Tone.setContext(context);
+      jobs.push({ context, scheduled: scheduleSong(part.score, part.hasVoice ? assets : { voice: null }) });
+    }
+  } finally {
+    Tone.setContext(original);
+  }
+  return Promise.all(
+    jobs.map(async ({ context, scheduled }) => {
+      await scheduled;
+      return context.render();
+    }),
+  );
+}
+
+// 楽譜を PART_SEC 秒ずつの部分に分ける。音は鳴り始める部分に入れ、時刻はその部分の頭からに直す
+// 部分の長さ: 中の音が鳴り終わる時刻 + 余韻（リリース・リバーブ）。曲の終わり（total）を超えない
+// フェードの途中には区切りを置かない（フェードの時刻を部分ごとにずらすだけで、同じ形でかかるように）
+export function splitScore(score, assets, total = songLength(score, assets)) {
+  const sound = score.sound ?? {};
+  const reverb = sound.reverbDecay ?? MAX_REVERB_SEC;
+  const noteTail = Math.max(NOTE_TAIL, sound.padRelease ?? 0, sound.melodyRelease ?? 0) + reverb;
+  const voiceTail = Math.max(VOICE_TAIL, reverb);
+  const voiceSec = Math.min(assets?.voice?.duration ?? 0, MAX_VOICE_SEC);
+  const fade = score.fade && score.fade.end > score.fade.start ? score.fade : null;
+  const lastCut = Math.min(score.duration, fade ? fade.start : Infinity);
+  const starts = [0];
+  for (let t = PART_SEC; t < lastCut; t += PART_SEC) starts.push(t);
+
+  const parts = starts.map((offset) => ({ offset, tracks: {}, end: 0, hasVoice: false }));
+  for (const [name, events] of Object.entries(score.tracks)) {
+    for (const e of events ?? []) {
+      let i = starts.length - 1;
+      while (i > 0 && e.time < starts[i]) i--;
+      const part = parts[i];
+      (part.tracks[name] ??= []).push({ ...e, time: e.time - part.offset });
+      if (name === "voice") {
+        if (!voiceSec) continue; // 声がないときは鳴らないので、長さに入れない
+        part.hasVoice = true;
+        part.end = Math.max(part.end, e.time - part.offset + (e.duration ?? voiceSec) + voiceTail);
+      } else {
+        part.end = Math.max(part.end, e.time - part.offset + (e.duration ?? 0) + noteTail);
+      }
+    }
+  }
+  return parts
+    .filter((p) => p.end > 0)
+    .map((p) => {
+      const length = Math.min(p.end, total - p.offset);
+      const partFade = fade ? { start: fade.start - p.offset, end: fade.end - p.offset } : score.fade;
+      return { offset: p.offset, length, hasVoice: p.hasVoice, score: { ...score, duration: length, tracks: p.tracks, fade: partFade } };
+    });
 }
 
 // 書き出す長さ: 楽譜の長さ。声が最後まで流れきらないときは、声の終わり + 余韻まで伸ばす（アウトロの声が途中で切れないように）
