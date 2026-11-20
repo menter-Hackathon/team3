@@ -104,7 +104,7 @@ function update() {
   // compose と同じ順: テンポに合わせて約1分になる小節の数を決め、頭からその小節だけにしてから編集する
   const fitted = fitLength(original, readBlueprint());
   layout = fitted.layout;
-  edited = editMidiFromBlueprint(fitted.midi, readBlueprint(), songKey, { bars: layout.totalBars });
+  edited = editMidiFromBlueprint(fitted.midi, readBlueprint(), songKey, { layout });
   const r = edited.report;
   const hatName = { 4: "4分音符（間引く）", 8: "8分音符", 16: "16分音符（細かく）" };
   const s = r.sound;

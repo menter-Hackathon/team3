@@ -20,17 +20,18 @@
 //   voice   曲の構成のイントロとアウトロの頭に、本人の声を1回ずつ置く。duration は付けない（声は最後まで流す。
 //           速いテンポでも名前などが途中で切れないように）。鳴らすかどうかは assets.voice があるかで決まる
 // 曲の構成（structure）: layout の小節の数で intro → q1〜q10 → outro に区切る（4/4 で数える。テンポの変化も反映した秒）
+// 区間（sections）: 1問ごとの区間の秒と、設計図の sections の値（10問の答えがあるときだけ。なければ []）。
+//           sound.js が brightness でメロディとパッドの明るさを変える（energy・hesitation は MIDI の編集で効かせ済み。映像などでも使える）
 // フェード（fade）: アウトロの頭から終わりまでで、音楽を 0 まで下げる（sound.js）。声はフェードしない
 // 長さ（duration）: アウトロの終わり + FADE_TAIL 秒（声が長ければ renderSong が声の終わりまで伸ばす）
 import { normalizeBlueprint } from "../blueprint.js";
 import { round } from "../util.js";
-import { findParts, avgPitch } from "./parts.js";
+import { findParts, avgPitch, DRUM_NOTES as DRUMS } from "./parts.js";
 import { soundFromBlueprint } from "./soundSettings.js";
 import { DEFAULT_LAYOUT } from "./edit/layout.js";
 
 export const SECTION_NAMES = ["intro", ...Array.from({ length: 10 }, (_, i) => `q${i + 1}`), "outro"];
 const FADE_TAIL = 0.5; // 秒。フェードが終わってから曲を終えるまで
-const DRUMS = { kick: [35, 36], snare: [37, 38, 39, 40], hat: [42, 44, 46] };
 const MIN_DURATION = 0.01; // 秒。長さ 0 の音を鳴らさないように
 const EXTRA_TRACKS = /^(keys|guitar|synth|sing)$/i; // 原曲にあってよい追加のトラック（今は鳴らさない）
 const PAD_MAX_NOTES = 4; // パッドの和音は最大4音（一番低い音と高い音は残し、間を間引く）
@@ -105,6 +106,7 @@ export function midiToScore(midi, input, layout = DEFAULT_LAYOUT) {
     sound,
     structure,
     fade,
+    sections: scoreSections(structure, bp),
     tracks,
   };
   return {
@@ -196,3 +198,12 @@ function groupByTime(notes) {
 const t = (s) => round(s, 3); // 秒はミリ秒まで
 const maxBy = (list, score) => list.reduce((best, x) => (best === null || score(x) > score(best) ? x : best), null);
 const minBy = (list, score) => list.reduce((best, x) => (best === null || score(x) < score(best) ? x : best), null);
+
+// 1問ごとの区間 [{ q, start, end, energy, brightness, hesitation }]（10問の答えがないときは []）
+function scoreSections(structure, bp) {
+  if (!bp.sources.quiz) return [];
+  return bp.sections.flatMap((sec) => {
+    const part = structure.find((x) => x.name === `q${sec.q}`);
+    return part ? [{ q: sec.q, start: part.start, end: part.end, energy: sec.energy, brightness: sec.brightness, hesitation: sec.hesitation }] : [];
+  });
+}

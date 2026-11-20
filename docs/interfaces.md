@@ -213,6 +213,7 @@ Score = {
            melodyAttack: 秒, melodyRelease: 秒 },  // 設計図の breathiness から（soundFromBlueprint）
   structure: [{ name: "intro" | "q1" … "q10" | "outro", start: 秒, end: 秒 }],  // 区間の長さは曲ごとに変わる（planLayout）
   fade?: { start: 秒, end: 秒 },  // この間に音楽を 0 まで下げる（アウトロ）。声はフェードしない。なければフェードなし
+  sections: [{ q: 1〜10, start: 秒, end: 秒, energy, brightness, hesitation }],  // 1問ごとの区間と設計図の値（10問の答えがないときは []）。sound.js が brightness でメロディ・パッドの明るさを変える。energy・hesitation は MIDI の編集で効かせ済み
   tracks: {
     voice:  [{ time, duration?, detune? }],   // duration がなければ最後まで（最大 10 秒）、detune がなければ元の高さ
     pad:    [{ time, notes: ["D4", "F4", "A4"], duration, velocity }],

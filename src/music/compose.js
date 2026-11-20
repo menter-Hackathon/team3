@@ -5,11 +5,10 @@
 //   1. 原曲を読む        設計図の baseSong（1〜4）→ public/songs/song{baseSong}.mid
 //   2. 曲の長さを決める   tempoPlan（叩いた速さ・テンポの変化）→ planLayout で約1分になる小節の数（src/music/edit/layout.js）
 //   3. 頭から必要な小節だけにする（trimToBars）
-//   4. 設計図で MIDI を編集する（editMidiByBlueprint。移調・音域・音の柔らかさ・ドラム・テンポ・ノリ）
+//   4. 設計図で MIDI を編集する（editMidiByBlueprint。移調・音階・音域・音の柔らかさ・ドラム・音の多さ・1問ごとの区間・テンポ・ノリ）
 //   5. 楽譜にする（midiToScore。曲の構成は 2 の小節の数、最後のアウトロで音楽だけフェードアウト）
 //   loadMidi(baseSong) → Promise<Midi>  原曲の読み方を差し替える（Node での確認用）。省くとブラウザで fetch する
 //   同じ設計図からは同じ曲になる（揺らぎは設計図から作った種の乱数）
-// 原曲を選ぶ（質問の答え → baseSong）・scale・density・sections は、まだ使っていない（次の段階）
 import { NOTES, normalizeBlueprint } from "../blueprint.js";
 const NOTE_INDEX = Object.fromEntries(NOTES.map((n, i) => [n, i]));
 import { editMidiByBlueprint, tempoPlan } from "./edit/blueprintEdit.js";
@@ -20,7 +19,7 @@ export async function compose(blueprint, { loadMidi = fetchSong } = {}) {
   const bp = normalizeBlueprint(blueprint);
   const source = await loadMidi(bp.baseSong);
   const { midi, layout } = fitLength(source, bp);
-  const { midi: edited } = editMidiByBlueprint(midi, bp, null, { bars: layout.totalBars });
+  const { midi: edited } = editMidiByBlueprint(midi, bp, null, { layout });
   const score = midiToScore(edited, bp, layout).score;
   score.tracks.blink = blinkTrack(score, bp.blinks);
   return score;
