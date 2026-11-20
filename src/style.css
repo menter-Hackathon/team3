@@ -628,3 +628,52 @@ h2 {
     height: 64px;
   }
 }
+
+/* 画面の高さが低いとき（ノート PC の Chrome など）は、デザインはそのままで余白と大きな丸を少し詰め、
+   スクロールせずに1画面に収める */
+@media (max-height: 860px) {
+  .stage {
+    padding: 56px 20px 24px;
+  }
+  .frame {
+    padding: 52px 40px 36px;
+  }
+  .divider {
+    margin: 10px auto;
+  }
+  .btn {
+    margin-top: 12px;
+  }
+  .ring {
+    width: 170px;
+    height: 170px;
+    margin: 14px auto 4px;
+  }
+  .pad {
+    width: min(220px, 72vw);
+    margin: 12px auto 6px;
+  }
+  .pad .label {
+    font-size: 44px;
+  }
+  .pad .label small {
+    font-size: 12px;
+    letter-spacing: 0.18em;
+  }
+  .question {
+    margin: 14px auto 16px;
+  }
+  .emblem {
+    height: 100px;
+  }
+  .loom {
+    height: 140px;
+    margin: 12px auto;
+  }
+  .player {
+    margin: 16px auto 4px;
+  }
+  .play {
+    margin-bottom: 10px;
+  }
+}
