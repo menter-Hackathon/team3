@@ -68,7 +68,6 @@
 - 起動: `npm run dev` → `http://localhost:5173`（画面と `/api` が両方動く）
 - AI を使うとき: `cp .dev.vars.example .dev.vars` してキーを入れる
 - 心拍を試すとき: `npm run dev -- --host` で同じ Wi-Fi の iPhone からつなげるようにする。iPhone からは IP ではなく `ws://<Mac の名前>.local:5173/...` でつなぐ。アプリの手順は `watch/README.md`
-- 瞬きを試すとき: `npm run dev` → `http://localhost:5173/dev/blink`（カメラを使う。60秒ずつはかって、人による違いを比べられる）
 - ビルド確認: `npm run build`
 - 公開（チームで相談してから）: `npm run build && npx wrangler deploy`（初回は `npx wrangler login`）
 - テスト: 自動テストはまだない。音・カメラ・マイクはブラウザで実際に鳴らして確かめる
@@ -98,7 +97,7 @@ worker/index.js         サーバー（Cloudflare Worker）: /api/title（AI で
 worker/heartRelay.js    センサー（任意）: 心拍の中継 /api/heart（iPhone → ブラウザ。Durable Objects）
 wrangler.jsonc          Cloudflare の設定
 watch/                  センサー（任意）: Apple Watch・iPhone アプリ（Xcode。手順は watch/README.md）
-dev/                    開発用の確認ページ（blueprint-edit.html：設計図で MIDI を編集、blink.html：瞬き）
+dev/                    開発用の確認ページ（blueprint-edit.html：設計図で MIDI を編集）
 ```
 
 - 各ファイルは中身が空。先頭に【担当】・書くもの（関数の入力と出力）・参考のコードを書いてある

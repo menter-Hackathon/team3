@@ -21,7 +21,7 @@ const WASM_URL = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/was
 const MODEL_URL =
   "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task";
 
-// しきい値はメガネや照明で変わる。dev/blink.html で試して決める
+// しきい値はメガネや照明で変わる。合わないときは startBlinks() が返す tracker.detector.options（または createBlinkDetector の引数）で変えられる
 // 実際の顔で試した値（2026-11-20）：瞬きの山は 0.5〜0.77、ふだんは 0.1 前後、目線だけ下をちらっと見ると 0.33 まで
 export const BLINK_DEFAULTS = {
   closeAbove: 0.5, // 閉じ具合がこれを超えたら「閉じた」
