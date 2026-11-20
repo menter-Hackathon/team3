@@ -27,11 +27,11 @@ export function defaultBlueprint() {
     rootFromVoice: false, // root を声の高さから決めたか（false なら原曲のキーのまま）
     scale: "dorian",
     density: 0.5,
-    groove: [0, 0, 0, 0],
-    melodyRange: 0.5, // メロディの音域（0〜1。声の抑揚）
+    groove: [0, 0, 0, 0], // 4拍それぞれのズレ（秒、各 ±0.05）。曲では 2 倍にして入れる（blueprintEdit.js）
+    melodyRange: 0.5, // メロディの音域（0〜1。声の抑揚）。0.5 で原曲のまま
     breathiness: 0.3, // 息っぽさ（0〜1。リバーブ・パッドの柔らかさ）
     stability: 0.5, // 叩くたびのバラつきの小ささ（0〜1。ドラムの細かさ・揺らぎ）
-    tempoDrift: 1, // 最後のテンポ ÷ 最初のテンポ（0.9〜1.1）
+    tempoDrift: 1, // 最後のテンポ ÷ 最初のテンポ（0.9〜1.1）。曲では変化を 2.5 倍にして使う（blueprintEdit.js）
     timbre: [1, 0.5, 0.3, 0.15],
     sections: Array.from({ length: SECTION_COUNT }, (_, i) => ({
       q: i + 1,

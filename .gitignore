@@ -47,6 +47,7 @@ __pycache__/
 *.py[cod]
 .venv/
 venv/
+tools/mp3-to-midi/work/
 
 # ===== ログ・一時ファイル =====
 *.log

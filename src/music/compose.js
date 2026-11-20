@@ -1,40 +1,42 @@
-// 【出力（原曲の選択・MIDI の編集＝うごてん、楽譜＝たいが）】設計図 → 原曲4曲から1曲を選ぶ → MIDI を編集（editMidiByBlueprint）→ 楽譜（midiToScore）。ここではまだ音を鳴らさない。
-// 受け渡しの形は docs/interfaces.md の「5. 設計図」「6. 原曲」「7. 楽譜」。原曲の MIDI を読むので async（Promise<Score> を返す）。
+// 【出力（原曲の選択・MIDI の編集・曲の長さ＝うごてん、楽譜＝たいが）】設計図 → 楽譜（Score）。ここではまだ音を鳴らさない。
+// 受け渡しの形は docs/interfaces.md の「5. 設計図」「6. 原曲」「7. 楽譜」。原曲の MIDI を読むので async。
 //
-// 書くもの:
-//   compose(blueprint) → Score = {
-//     bpm, duration: 秒（余韻込み）, timbre,
-//     structure: [{ name: "intro" | "q1"…"q10" | "outro", start: 秒, end: 秒 }],
-//     tracks: { voice, pad, bass, melody, kick, snare, hat },
-//   }
-//   音の形: voice  { time, duration?, detune? }
-//           pad    { time, notes: ["D4", "F4", "A4"], duration, velocity }
-//           bass / melody { time, note: "D2", duration, velocity }
-//           kick / snare / hat { time, velocity }
-//   各トラックは time の小さい順。同じトラックで同じ time を2回使わない。time は秒
-//
-// 決まっていること:
-//   構成はイントロ2小節（声）→ 1問＝2小節 × 10 → アウトロ2小節（声）
-//   同じ設計図からは同じ曲にする（Math.random ではなく、設計図から種を作った乱数を使う）
-//
-// 参考:
-//   const bp = normalizeBlueprint(blueprint);
-//   const beat = 60 / bp.bpm;              // 1拍の秒数。1小節は beat * 4
-//   音階: SCALES[bp.scale] は主音から何半音上かの並び。主音は NOTES.indexOf(bp.root)
-//   ノリ: 拍の時刻に bp.groove[4拍のうち何拍目か] を足すと、その人の叩き方のズレが出る
-//   盛り上がり: bp.sections[i].energy で音数やドラムを増やす、brightness で音域を上げる、など
-//   声: bp.sources.voice が true ならイントロ・アウトロに voice の音を置く
-//   入力ができる前は、SAMPLE_BLUEPRINT（src/blueprint.js）で試せる
+// compose(blueprint, { loadMidi }?) → Promise<Score>
+//   1. 原曲を読む        設計図の baseSong（1〜4）→ public/songs/song{baseSong}.mid
+//   2. 曲の長さを決める   tempoPlan（叩いた速さ・テンポの変化）→ planLayout で約1分になる小節の数（src/music/edit/layout.js）
+//   3. 頭から必要な小節だけにする（trimToBars）
+//   4. 設計図で MIDI を編集する（editMidiByBlueprint。移調・音域・音の柔らかさ・ドラム・テンポ・ノリ）
+//   5. 楽譜にする（midiToScore。曲の構成は 2 の小節の数、最後のアウトロで音楽だけフェードアウト）
+//   loadMidi(baseSong) → Promise<Midi>  原曲の読み方を差し替える（Node での確認用）。省くとブラウザで fetch する
+//   同じ設計図からは同じ曲になる（揺らぎは設計図から作った種の乱数）
+// 原曲を選ぶ（質問の答え → baseSong）・scale・density・sections は、まだ使っていない（次の段階）
 import { normalizeBlueprint } from "../blueprint.js";
+import { editMidiByBlueprint, tempoPlan } from "./edit/blueprintEdit.js";
+import { planLayout, trimToBars } from "./edit/layout.js";
+import { midiToScore } from "./midiToScore.js";
 
-export async function compose(blueprint) {
+export async function compose(blueprint, { loadMidi = fetchSong } = {}) {
   const bp = normalizeBlueprint(blueprint);
-  // TODO(出力・たいが)
-  return {
-    bpm: bp.bpm,
-    duration: 0,
-    timbre: bp.timbre,
-    structure: [],
-    tracks: { voice: [], pad: [], bass: [], melody: [], kick: [], snare: [], hat: [] },
-  };
+  const source = await loadMidi(bp.baseSong);
+  const { midi, layout } = fitLength(source, bp);
+  const { midi: edited } = editMidiByBlueprint(midi, bp, null, { bars: layout.totalBars });
+  return midiToScore(edited, bp, layout).score;
+}
+
+// 原曲 → 約1分の長さにした原曲と、その小節の数（dev ページも同じ順で使う）
+export function fitLength(source, blueprint) {
+  const { bpm, drift } = tempoPlan(blueprint, source);
+  const barTicks = source.header.ppq * 4;
+  const endTick = Math.max(0, ...source.tracks.flatMap((t) => t.notes.map((n) => n.ticks + n.durationTicks)));
+  const layout = planLayout(bpm, drift, Math.ceil(endTick / barTicks));
+  return { midi: trimToBars(source, layout.totalBars), layout };
+}
+
+async function fetchSong(baseSong) {
+  const res = await fetch(`/songs/song${baseSong}.mid`);
+  if (!res.ok) throw new Error(`原曲 song${baseSong}.mid を読めませんでした（${res.status}）`);
+  // ブラウザで読むときだけ読み込む（@tonejs/midi は CommonJS なので、Node では名前付きで import できないため）
+  const mod = await import("@tonejs/midi");
+  const Midi = mod.Midi ?? mod.default.Midi;
+  return new Midi(await res.arrayBuffer());
 }

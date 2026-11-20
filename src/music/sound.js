@@ -7,8 +7,10 @@
 //   楽譜の知らないトラックは無視して console.warn を出す
 //
 // つなぎ方:
-//   melody（score.timbre の倍音）・pad（フィルター）・voice ─→ リバーブ（score.sound）─┐
-//   bass・kick・snare・hat ──────────────────────────────────┴→ リミッター（音割れ防止）→ 出力
+//   melody（score.timbre の倍音）・pad（フィルター）→ リバーブ（score.sound）─┐
+//   bass・kick・snare・hat ─────────────────────────────┴→ フェード → リミッター（音割れ防止）→ 出力
+//   voice → 声用のリバーブ（同じ設定）──────────────────────────────────┘（声はフェードしない）
+//   フェード: score.fade { start, end } があれば、その間に音楽の音量を 0 まで下げる（アウトロで音楽が消え、本人の声だけが残る）
 //   声の detune（音の高さを変える）はまだ使わない（GrainPlayer で楽器にするのは未定）
 import * as Tone from "tone";
 import { defaultBlueprint } from "../blueprint.js";
@@ -21,6 +23,7 @@ const DEFAULT_TIMBRE = defaultBlueprint().timbre;
 // 音量（dB）。楽器ごとのバランス
 const VOLUME = { melody: -9, pad: -17, bass: -8, kick: -4, snare: -14, hat: -26, voice: 0 };
 const MAX_POLYPHONY = 64; // 同時に鳴らせる音の数（既定の 32 だと、消え方の長いパッドで音が抜けることがある）
+const FADE_FLOOR = 0.0001; // フェードの終わりの音量（指数カーブは 0 にできないので、ここまで下げてから 0 にする）
 export const MAX_VOICE_SEC = 10; // 声を流す最大の長さ（秒）。長すぎる録音が曲の中ずっと鳴らないように
 
 export async function scheduleSong(score, assets = { voice: null }) {
@@ -33,12 +36,19 @@ export async function scheduleSong(score, assets = { voice: null }) {
 
   // 出力のつなぎ方
   const limiter = new Tone.Limiter(-1).toDestination();
-  const reverb = new Tone.Reverb({ decay: sound.reverbDecay, wet: sound.reverbWet }).connect(limiter);
+  const music = new Tone.Gain(1).connect(limiter); // 音楽全体（フェードをかける）
+  const reverb = new Tone.Reverb({ decay: sound.reverbDecay, wet: sound.reverbWet }).connect(music);
+  const voiceReverb = new Tone.Reverb({ decay: sound.reverbDecay, wet: sound.reverbWet }).connect(limiter);
+  if (score.fade && score.fade.end > score.fade.start) {
+    music.gain.setValueAtTime(1, score.fade.start);
+    music.gain.exponentialRampToValueAtTime(FADE_FLOOR, score.fade.end);
+    music.gain.setValueAtTime(0, score.fade.end);
+  }
 
   // メロディ: 設計図の倍音（顔の輪郭など）をそのまま音色にする
   const melody = new Tone.PolySynth(Tone.Synth, {
     oscillator: { type: "custom", partials: timbre },
-    envelope: { attack: 0.01, decay: 0.2, sustain: 0.6, release: 0.4 },
+    envelope: { attack: sound.melodyAttack ?? 0.01, decay: 0.2, sustain: 0.6, release: sound.melodyRelease ?? 0.4 },
     volume: VOLUME.melody,
   }).connect(reverb);
   melody.maxPolyphony = MAX_POLYPHONY;
@@ -58,12 +68,12 @@ export async function scheduleSong(score, assets = { voice: null }) {
     filterEnvelope: { attack: 0.01, decay: 0.2, sustain: 0.4, baseFrequency: 200, octaves: 2 },
     envelope: { attack: 0.01, decay: 0.3, sustain: 0.7, release: 0.3 },
     volume: VOLUME.bass,
-  }).connect(limiter);
+  }).connect(music);
 
-  const kick = new Tone.MembraneSynth({ octaves: 6, pitchDecay: 0.04, volume: VOLUME.kick }).connect(limiter);
-  const snareFilter = new Tone.Filter(1800, "highpass").connect(limiter);
+  const kick = new Tone.MembraneSynth({ octaves: 6, pitchDecay: 0.04, volume: VOLUME.kick }).connect(music);
+  const snareFilter = new Tone.Filter(1800, "highpass").connect(music);
   const snare = new Tone.NoiseSynth({ noise: { type: "white" }, envelope: { attack: 0.001, decay: 0.15, sustain: 0 }, volume: VOLUME.snare }).connect(snareFilter);
-  const hatFilter = new Tone.Filter(8000, "highpass").connect(limiter);
+  const hatFilter = new Tone.Filter(8000, "highpass").connect(music);
   const hat = new Tone.NoiseSynth({ noise: { type: "white" }, envelope: { attack: 0.001, decay: 0.04, sustain: 0 }, volume: VOLUME.hat }).connect(hatFilter);
 
   // 予約（楽譜は同じトラックで同じ time を使わない決まりなので、単音の楽器でもエラーにならない）
@@ -76,12 +86,12 @@ export async function scheduleSong(score, assets = { voice: null }) {
 
   // 声: イントロとアウトロで本人の声をそのまま流す（duration がなければ最後まで。ただし MAX_VOICE_SEC 秒まで）
   if (assets?.voice) {
-    const voiceGain = new Tone.Gain(Tone.dbToGain(VOLUME.voice)).connect(reverb);
+    const voiceGain = new Tone.Gain(Tone.dbToGain(VOLUME.voice)).connect(voiceReverb);
     for (const e of tracks.voice ?? []) {
       const player = new Tone.Player(assets.voice).connect(voiceGain);
       player.start(e.time, 0, e.duration ?? Math.min(assets.voice.duration, MAX_VOICE_SEC));
     }
   }
 
-  await reverb.ready; // リバーブの響きを作り終わるまで待つ（待たないと最初の音に響きが付かない）
+  await Promise.all([reverb.ready, voiceReverb.ready]); // リバーブの響きを作り終わるまで待つ（待たないと最初の音に響きが付かない）
 }

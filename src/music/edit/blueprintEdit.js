@@ -5,43 +5,53 @@
 // 編集の順番と、使う設計図の項目:
 //   声（sources.voice があるとき）
 //     1. 移調          root         原曲を、このキーに移調する（rootFromVoice が true のときだけ。音階は原曲のまま。ドラムは移調しない）
-//     2. メロディの音域 melodyRange  真ん中の音からの距離を 0.6〜1.4 倍にし、音階の音に寄せる
+//     2. メロディの音域 melodyRange  真ん中の音からの距離を倍にし（0 → 0.3倍・0.5 → 1倍・1 → 2.2倍の折れ線）、音階の音に寄せる。
+//                     原曲の音域 ± 12 半音・C3〜C7 からはみ出すときは、メロディ全体の倍率を下げて収める
 //     3. 音の柔らかさ   breathiness  リバーブ・パッドの設定を CC として曲の頭に書く（数字は src/music/soundSettings.js の soundFromBlueprint。鳴らす側と同じ）
 //   叩く（sources.taps があるとき。4/4 拍子の曲だけ）
 //     4. ドラムの細かさ stability・bpm  ハイハットを 4分・8分・16分で刻み直す（原曲でハイハットが鳴っていた小節だけ）
+//                     安定度 0.35 未満 → 4分、120 BPM 未満で 0.6 以上 → 16分、それ以外 → 8分
 //   テンポ（sources.taps か sources.heart があるとき）
 //     5. テンポ        bpm          原曲のテンポの変化は残したまま、全体を「bpm ÷ 原曲の最初の bpm」倍にする
-//     6. テンポの変化   tempoDrift   1小節ごとに少しずつ、最後に tempoDrift 倍になるように変える（taps があるときだけ）
+//     6. テンポの変化   tempoDrift   1小節ごとに少しずつ、最後に「tempoDrift の変化 × 2.5」倍になるように変える（±10% → ±25%。taps があるときだけ）
+//   5・6 の数字は tempoPlan() で決める（曲の長さを決める layout.js の planLayout も同じ数字を使う）
 //   叩く（続き）
-//     7. ノリ・揺らぎ   groove・stability  拍の位置に合わせて時刻をずらし、バラつきの分だけ時刻と強さを揺らす
+//     7. ノリ・揺らぎ   groove・stability  拍の位置に合わせて時刻を groove の 2 倍ずらし（1拍の 1/4 まで）、
+//                     バラつきの分だけ時刻（最大 ±45ms）と強さ（最大 ±0.3）を揺らす
+//   効き方は、その人らしさがはっきり出るように強めにしてある（設計図の範囲は変えず、ここの倍率で強くする）
 //   材料がない所は原曲のまま。
 //
 // editMidiByBlueprint(midi, blueprint, songKey?) → { midi, report }
 //   midi      @tonejs/midi の Midi。元の midi は書き換えず、編集したコピーを返す
 //   blueprint 設計図。中で normalizeBlueprint() を通す
 //   songKey   { root: "D", scale: "dorian" }（原曲のキー）。省くと MIDI の "key: D dorian" テキスト → 調号 → 音の分布から推定
+//   bars      曲の小節の数（省略可。compose は planLayout の totalBars を渡す）。省くと最後の音から数える
 //   report    何をしたか（画面表示・確認用）
 import { NOTES, SCALES, normalizeBlueprint } from "../../blueprint.js";
 import { clamp, median, round, seededRandom, hashString } from "../../util.js";
 import { findParts, isDrum } from "../parts.js";
 import { soundFromBlueprint } from "../soundSettings.js";
 
-const RANGE_MIN_FACTOR = 0.6; // melodyRange 0 のときのメロディの音域の倍率
-const RANGE_MAX_FACTOR = 1.4; // melodyRange 1 のとき
-const RANGE_MARGIN = 7; // 音域を広げても、原曲のメロディの一番低い・高い音から 7 半音までに収める
+const RANGE_MIN_FACTOR = 0.3; // melodyRange 0 のときのメロディの音域の倍率（抑揚の小さい声 → ほとんど平らなメロディ）
+const RANGE_MAX_FACTOR = 2.2; // melodyRange 1 のとき（抑揚の大きい声 → 上下に大きく動くメロディ）
+const RANGE_MARGIN = 12; // 音域を広げても、原曲のメロディの一番低い・高い音から 12 半音までに収める
+const MELODY_LOWEST = 48; // それでも C3〜C7 の外には出さない（低すぎて濁る・高すぎて耳に痛い音にならないように）
+const MELODY_HIGHEST = 96;
 const CLOSED_HAT = 42; // General MIDI のクローズド・ハイハット
-const HUMANIZE_TIME_SEC = 0.02; // 揺らぎ 1 のとき、音の時刻を最大 ±20ms ずらす
-const HUMANIZE_VELOCITY = 0.12; // 揺らぎ 1 のとき、音の強さを最大 ±0.12 変える
+const HUMANIZE_TIME_SEC = 0.045; // 揺らぎ 1 のとき、音の時刻を最大 ±45ms ずらす
+const HUMANIZE_VELOCITY = 0.3; // 揺らぎ 1 のとき、音の強さを最大 ±0.3 変える
+const GROOVE_GAIN = 2; // 叩いたズレ（groove）を何倍にして曲に入れるか
+const GROOVE_MAX_BEATS = 0.25; // ノリのズレは 1拍の 1/4 まで（16分音符ぶん以上ずれると、リズムが別物になるため）
+const DRIFT_GAIN = 2.5; // テンポの変化（tempoDrift）を何倍にするか（設計図の ±10% → 曲では ±25%）
 const SOUND_CC = { reverb: 91, attack: 73, release: 72, brightness: 74 };
 
-export function editMidiByBlueprint(source, input, songKey = null) {
+export function editMidiByBlueprint(source, input, songKey = null, { bars: songBars = null } = {}) {
   const bp = normalizeBlueprint(input);
   const midi = source.clone(); // 元を書き換えないようにコピー
   const parts = findParts(midi);
   const warnings = [];
   const useVoice = bp.sources.voice;
   const useTaps = bp.sources.taps;
-  const useTempo = bp.sources.taps || bp.sources.heart;
   const ppq = midi.header.ppq;
   const barTicks = ppq * 4;
   const is44 = isFourFour(midi);
@@ -60,8 +70,9 @@ export function editMidiByBlueprint(source, input, songKey = null) {
   }
   const newRoot = NOTES[(NOTES.indexOf(key.root) + shift + 12) % 12];
 
-  // 2. メロディの音域: 真ん中の音からの距離を倍にし、原曲の音域 ± RANGE_MARGIN の中で音階の音に寄せる
-  const rangeFactor = useVoice ? round(lerp(RANGE_MIN_FACTOR, RANGE_MAX_FACTOR, bp.melodyRange)) : 1;
+  // 2. メロディの音域: 真ん中の音からの距離を倍にし、原曲の音域 ± RANGE_MARGIN の中で音階の音に寄せる。
+  //    範囲からはみ出すときは、1音ずつ端に押し込まず、メロディ全体の倍率を下げてちょうど収める（端に音が固まらないように）
+  let rangeFactor = useVoice ? rangeFactorFor(bp.melodyRange) : 1;
   let melodySpan = null;
   if (!parts.melody) {
     if (rangeFactor !== 1) warnings.push("メロディのトラックが見つからないので、音域は変えませんでした");
@@ -69,8 +80,15 @@ export function editMidiByBlueprint(source, input, songKey = null) {
     const before = span(parts.melody.notes);
     if (rangeFactor !== 1) {
       const center = median(parts.melody.notes.map((n) => n.midi));
-      const lo = Math.max(0, before.low - RANGE_MARGIN);
-      const hi = Math.min(127, before.high + RANGE_MARGIN);
+      const lo = Math.max(Math.min(MELODY_LOWEST, before.low), before.low - RANGE_MARGIN);
+      const hi = Math.min(Math.max(MELODY_HIGHEST, before.high), before.high + RANGE_MARGIN);
+      if (rangeFactor > 1) {
+        // lo・hi は原曲の音域をふくむので、収まる倍率は 1 以上になる
+        const above = before.high - center;
+        const below = center - before.low;
+        const fit = Math.min(above > 0 ? (hi - center) / above : Infinity, below > 0 ? (center - lo) / below : Infinity);
+        rangeFactor = round(Math.max(1, Math.min(rangeFactor, fit)));
+      }
       for (const note of parts.melody.notes) {
         const stretched = clamp(Math.round(center + (note.midi - center) * rangeFactor), lo, hi);
         note.midi = snapToScale(stretched, newRoot, key.scale, lo, hi);
@@ -97,7 +115,8 @@ export function editMidiByBlueprint(source, input, songKey = null) {
 
   // 4. ドラムの細かさ: ハイハットが一番多いトラックだけ、原曲でハイハットが鳴っていた小節を刻み直す
   const endTick = Math.max(0, ...midi.tracks.flatMap((t) => t.notes.map((n) => n.ticks + n.durationTicks)));
-  const bars = Math.max(1, Math.ceil(endTick / barTicks));
+  // 曲の小節の数（テンポの変化を広げる長さ）。compose は planLayout の totalBars を渡す（最後の小節が休みでも、見込みどおりの長さになるように）
+  const bars = songBars ?? Math.max(1, Math.ceil(endTick / barTicks));
   const hatDiv = useTaps && is44 ? hatDivision(bp.bpm, bp.stability) : null;
   let hats = null;
   const hatTrack = maxBy(parts.drums, (t) => t.notes.filter((n) => n.midi === CLOSED_HAT).length);
@@ -120,9 +139,7 @@ export function editMidiByBlueprint(source, input, songKey = null) {
 
   // 5・6. テンポとテンポの変化: 原曲のテンポの点はそのまま残し、全体の倍率と小節ごとの変化を掛ける
   const original = midi.header.tempos.length ? midi.header.tempos.map((t) => ({ ticks: t.ticks, bpm: t.bpm })) : [{ ticks: 0, bpm: 120 }];
-  const originalBpm = original[0].bpm;
-  const ratio = useTempo ? bp.bpm / originalBpm : 1;
-  const drift = useTaps ? bp.tempoDrift : 1;
+  const { originalBpm, ratio, drift } = tempoPlan(bp, midi);
   if (ratio !== 1 || drift !== 1) {
     const bpmOf = (ticks) => original.filter((t) => t.ticks <= ticks).at(-1)?.bpm ?? originalBpm;
     const rampOf = (ticks) => (bars < 2 ? 1 : 1 + ((drift - 1) * Math.min(Math.floor(ticks / barTicks), bars - 1)) / (bars - 1));
@@ -133,6 +150,7 @@ export function editMidiByBlueprint(source, input, songKey = null) {
   }
   const tempos = midi.header.tempos;
   const bpmAt = (ticks) => tempos.filter((t) => t.ticks <= ticks).at(-1)?.bpm ?? tempos[0]?.bpm ?? 120;
+  const grooveLimitAt = (ticks) => (GROOVE_MAX_BEATS * 60) / bpmAt(ticks); // ノリのズレの上限（秒）
 
   // 7. ノリと揺らぎ: 拍の中の位置に合わせて groove のズレを足し（拍と拍の間は前後のズレを直線でつなぐ）、
   //    揺らぎ（1 − stability）の分だけ時刻と強さを揺らす。同じトラック・同じ時刻の音（和音）は同じだけずらす
@@ -148,7 +166,8 @@ export function editMidiByBlueprint(source, input, songKey = null) {
           if (hasGroove) {
             const beatPos = (note.ticks % barTicks) / ppq; // 小節の中で何拍目か（0〜4 未満）
             const beat = Math.floor(beatPos);
-            sec += bp.groove[beat] + (bp.groove[(beat + 1) % 4] - bp.groove[beat]) * (beatPos - beat);
+            const groove = GROOVE_GAIN * (bp.groove[beat] + (bp.groove[(beat + 1) % 4] - bp.groove[beat]) * (beatPos - beat));
+            sec += clamp(groove, -grooveLimitAt(note.ticks), grooveLimitAt(note.ticks));
           }
           shiftAt.set(note.ticks, sec);
         }
@@ -180,7 +199,8 @@ export function editMidiByBlueprint(source, input, songKey = null) {
         ? `${round(originalBpm)} BPM（原曲のまま）`
         : `${round(originalBpm)} → ${round(originalBpm * ratio)}${drift !== 1 ? ` → ${round(originalBpm * ratio * drift)}（最後）` : ""} BPM`,
       tempoDrift: drift,
-      groove: hasGroove ? bp.groove : null,
+      // 実際にかけたズレ（GROOVE_GAIN 倍し、曲の最初のテンポで 1/4 拍までにしたもの）
+      groove: hasGroove ? bp.groove.map((s) => round(clamp(s * GROOVE_GAIN, -grooveLimitAt(0), grooveLimitAt(0)), 3)) : null,
       hats,
       humanize,
       warnings,
@@ -188,9 +208,20 @@ export function editMidiByBlueprint(source, input, songKey = null) {
   };
 }
 
+// テンポの決め方（5・6 と、曲の長さの planLayout が同じ数字を使う）→ { originalBpm, ratio, bpm, drift }
+//   originalBpm 原曲の最初のテンポ / ratio 全体に掛ける倍率（叩いた速さ・心拍があるとき）
+//   bpm 編集後の最初のテンポ / drift 最後のテンポ ÷ 最初のテンポ（tempoDrift を DRIFT_GAIN 倍にしたもの）
+export function tempoPlan(input, midi) {
+  const bp = normalizeBlueprint(input);
+  const originalBpm = midi.header.tempos[0]?.bpm ?? 120;
+  const ratio = bp.sources.taps || bp.sources.heart ? bp.bpm / originalBpm : 1;
+  const drift = bp.sources.taps ? round(1 + (bp.tempoDrift - 1) * DRIFT_GAIN, 3) : 1;
+  return { originalBpm, ratio, bpm: originalBpm * ratio, drift };
+}
+
 // 設計図と MIDI から、編集した MIDI のバイト列まで一度に作る → { midi, bytes, report }
-export function editMidiFromBlueprint(source, blueprint, songKey = null) {
-  const { midi, report } = editMidiByBlueprint(source, blueprint, songKey);
+export function editMidiFromBlueprint(source, blueprint, songKey = null, options = {}) {
+  const { midi, report } = editMidiByBlueprint(source, blueprint, songKey, options);
   return { midi, bytes: midi.toArray(), report };
 }
 
@@ -200,9 +231,9 @@ export function editMidiFromBlueprint(source, blueprint, songKey = null) {
 function soundToCC(sound) {
   return {
     reverb: sound.reverbWet,
-    attack: clamp(sound.padAttack / 2, 0, 1),
-    release: clamp(sound.padRelease / 4, 0, 1),
-    brightness: clamp(Math.log(sound.padFilterHz / 200) / Math.log(8000 / 200), 0, 1),
+    attack: clamp(sound.padAttack / 2.5, 0, 1),
+    release: clamp(sound.padRelease / 5, 0, 1),
+    brightness: clamp(Math.log(sound.padFilterHz / 500) / Math.log(8000 / 500), 0, 1),
   };
 }
 
@@ -211,8 +242,8 @@ function soundToCC(sound) {
 
 // ゆっくり安定して叩く人は細かく（16分）、バラつきの大きい人は間引く（4分）、それ以外は 8分
 function hatDivision(bpm, stability) {
-  if (stability < 0.25) return 4;
-  if (bpm < 100 && stability >= 0.5) return 16;
+  if (stability < 0.35) return 4;
+  if (bpm < 120 && stability >= 0.6) return 16;
   return 8;
 }
 
@@ -284,6 +315,13 @@ export function snapToScale(midiNote, root, scale, lo = 0, hi = 127) {
 const FLATS = { Db: "C#", Eb: "D#", Gb: "F#", Ab: "G#", Bb: "A#", Cb: "B", Fb: "E" };
 const toSharp = (name) => FLATS[name] ?? name;
 const lerp = (a, b, t) => a + (b - a) * t;
+
+// melodyRange（0〜1）→ メロディの音域の倍率。真ん中（0.5）でちょうど 1 倍（原曲のまま）になる折れ線
+//   0 → RANGE_MIN_FACTOR、0.5 → 1、1 → RANGE_MAX_FACTOR
+export function rangeFactorFor(melodyRange) {
+  const r = clamp(melodyRange, 0, 1);
+  return round(r <= 0.5 ? lerp(RANGE_MIN_FACTOR, 1, r / 0.5) : lerp(1, RANGE_MAX_FACTOR, (r - 0.5) / 0.5));
+}
 const maxBy = (list, score) => list.reduce((best, x) => (best === null || score(x) > score(best) ? x : best), null);
 
 function span(notes) {

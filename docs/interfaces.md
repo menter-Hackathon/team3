@@ -90,11 +90,16 @@ UI（src/main.js）が順番に呼ぶ
 - `src/sensor/heart.js`（センサー・任意）：`connectHeart(url)` → `HeartConnection | null`
 - `src/sensor/blink.js`（センサー・任意）：`startBlinks({ video, onBlink })` → `Promise<BlinkTracker | null>`（モデルを読み込んでからカメラを開く。20秒で読み込めなければ `null`）、`tracker.summarize(startMs, endMs)` → `Blinks | null`、`summarizeBlinks(timesMs, startMs, endMs)` → `Blinks`（数えるだけ。1分あたりは `activeMs`〔実際に測れていた時間〕で割る）、`createBlinkDetector(options)`（目の閉じ具合 → 瞬きの判定）
 - `src/sensor/face.js`（センサー・任意）：`captureFace()` → `Face | null`
-- `src/music/compose.js`（出力。原曲の選択・編集＝うごてん、楽譜＝たいが）：`compose(blueprint)` → `Promise<Score>`（原曲の MIDI を読むので async）
-- `src/music/edit/blueprintEdit.js`（出力・うごてん）：`editMidiByBlueprint(midi, blueprint, songKey)` → `{ midi, report }`
+- `src/music/compose.js`（出力。原曲の選択・編集＝うごてん、楽譜＝たいが）
+  - `compose(blueprint, { loadMidi }?)` → `Promise<Score>`（原曲の MIDI を読むので async。`loadMidi(baseSong)` は原曲の読み方で、省くと `/songs/song{baseSong}.mid` を読む。Node で試すときに差し替える）
+  - `fitLength(midi, blueprint)` → `{ midi, layout }`（曲の長さを決め、頭から必要な小節だけにする）
+- `src/music/edit/blueprintEdit.js`（出力・うごてん）
+  - `editMidiByBlueprint(midi, blueprint, songKey, { bars }?)` → `{ midi, report }`（`bars` は曲の小節の数。`compose` は `planLayout` の `totalBars` を渡す）
+  - `tempoPlan(blueprint, midi)` → `{ originalBpm, ratio, bpm, drift }`（テンポの決め方。曲の長さの `planLayout` も同じ数字を使う）
+- `src/music/edit/layout.js`（出力・うごてん）：`planLayout(bpm, drift, maxBars)` → `{ introBars, barsPerQuestion, outroBars, totalBars, estimatedSec }`（約1分になる小節の数）・`trimToBars(midi, bars)` → 頭から `bars` 小節だけにした MIDI のコピー・`DEFAULT_LAYOUT`
 - `src/music/parts.js`（出力・共通。うごてんは自由に変えてよい・たいがへの確認は不要）：`findParts(midi)` → `{ pitched, melody, pad, drums }`・`isDrum(track)`（MIDI のトラックの見分け）
 - `src/music/soundSettings.js`（出力・共通。うごてんは自由に変えてよい・たいがへの確認は不要）：`soundFromBlueprint(blueprint)` → 音の柔らかさの設定（楽譜の `sound`・MIDI の CC・sound.js が同じ数字を使う）
-- `src/music/midiToScore.js`（出力・たいが）：`midiToScore(midi, blueprint)` → `{ score, report }`
+- `src/music/midiToScore.js`（出力・たいが）：`midiToScore(midi, blueprint, layout?)` → `{ score, report }`（`layout` は `planLayout` の結果。省くと `DEFAULT_LAYOUT`）
 - `src/music/sound.js`（出力・たいが）：`scheduleSong(score, assets)` → `Promise`（楽器を作って予約する。リバーブの準備ができたら終わる）
 - `src/music/render.js`（出力・たいが）：`renderSong(score, assets)` → `Promise<Blob>`（WAV）
 - `src/music/wav.js`（出力・たいが）：`audioBufferToWav(audioBuffer)` → `Blob`・`encodeWav(channels, sampleRate)` → `ArrayBuffer`
@@ -166,31 +171,33 @@ BlinkTracker  = { timesMs, score: 今の目の閉じ具合 0〜1, faceVisible, f
 | `rootFromVoice`（追加） | 真偽値 | 声の高さが取れて `root` を決めたか | たいが | false なら、声があっても原曲のキーのまま（ささやき声など高さが取れない声のとき） |
 | `scale` | `phrygian`・`aeolian`・`dorian`・`mixolydian`・`ionian`・`lydian`（暗い順） | 質問 | うごてん | 質問の部分で決めて使う（原曲の選択・音階 など。使い方はうごてんが決める） |
 | `density` | 0〜1 | 質問 | うごてん | 音の多さ |
-| `groove` | 4拍それぞれ秒（各 ±0.05） | 叩いたリズムのズレ | たいが | 音の時刻を拍の位置に合わせてずらす（ノリ） |
-| `melodyRange`（追加） | 0〜1 | 声の抑揚（`pitchVariation`） | たいが | メロディの音域を広げる・狭める |
+| `groove` | 4拍それぞれ秒（各 ±0.05） | 叩いたリズムのズレ | たいが | 音の時刻を拍の位置に合わせてずらす（ノリ）。曲では 2 倍にして入れる（1拍の 1/4 まで。`blueprintEdit.js` の `GROOVE_GAIN`） |
+| `melodyRange`（追加） | 0〜1 | 声の抑揚（`pitchVariation`） | たいが | メロディの音域を広げる・狭める（0 → 0.3倍・0.5 → 1倍・1 → 2.2倍。はみ出すときは全体の倍率を下げて収める） |
 | `breathiness`（追加） | 0〜1 | 声の澄み具合（`clarity`）の逆 | たいが | リバーブの深さ・パッドの柔らかさ |
 | `stability`（追加） | 0〜1 | 叩くたびのバラつきの小ささ | たいが | ドラム（ハイハット）の細かさ・揺らぎ |
-| `tempoDrift`（追加） | 0.9〜1.1 | 叩く速さの前半と後半の比 | たいが | テンポの変化（最後のテンポ ÷ 最初のテンポ） |
+| `tempoDrift`（追加） | 0.9〜1.1 | 叩く速さの前半と後半の比 | たいが | テンポの変化（最後のテンポ ÷ 最初のテンポ）。曲では変化を 2.5 倍にして使う（±10% → ±25%。`blueprintEdit.js` の `DRIFT_GAIN`） |
 | `timbre` | 1〜16個、各 0〜1 | 顔の輪郭（任意）。なければ既定の音色 | — | 音色（倍音の強さ） |
-| `sections` | 必ず10個 | 質問（1問ごと） | うごてん | 1問ごとの区間（2小節）の `q`（1〜10）・盛り上がり `energy`・明るさ `brightness`・迷い `hesitation`（各 0〜1） |
+| `sections` | 必ず10個 | 質問（1問ごと） | うごてん | 1問ごとの区間（1〜4小節。テンポで変わる。`planLayout`）の `q`（1〜10）・盛り上がり `energy`・明るさ `brightness`・迷い `hesitation`（各 0〜1） |
 | `sources` | 真偽値 | どの材料が取れたか | 全員 | 画面の表示・AI の曲名・確認。`voice` は声が録れていれば true（高さが取れなくても true。キーを変えるかは `rootFromVoice`）。`voice` がなければキー・メロディの音域・音の柔らかさは原曲のまま、`taps`・`heart` がなければテンポは原曲のまま、`taps` がなければテンポの変化・ノリ・ドラム・揺らぎも原曲のまま |
 
 - （追加）の項目は、既定値があって、なくても動く追加なので `version` は 1 のまま（「11. 形を変えるとき」）。`src/blueprint.js` の `defaultBlueprint()`・`normalizeBlueprint()` にも足す。
 - 足りない材料の所は既定値（`defaultBlueprint()`）のままにする。
 - 性格 → 音楽の決め方（`baseSong`・`scale`・`density`・`sections` の決め方）は `toBlueprint` の質問の部分に書く（うごてん）。
-- 曲の構成：イントロ2小節（声）→ 1問＝2小節 × 10 → アウトロ2小節（声）。80 BPM で約74秒。
+- 曲の構成：イントロ（声）→ 1問 × 10 → アウトロ（声。音楽だけフェードアウト）。**約1分**。テンポに合わせて小節の数を変える（イントロ 2〜4・1問 1〜4・アウトロ 2〜6 小節。`src/music/edit/layout.js` の `planLayout`）。例：60 BPM → 15小節、90 BPM → 24小節、160 BPM → 40小節。
 
 ## 6. 原曲（うごてん → `compose`）
 
-原曲4曲は AI で作った MIDI（うごてんが作る）。`compose` が設計図の `baseSong` で1曲を選び、ほかの項目で編集する。
+原曲4曲は、AI で作った MP3 を `tools/mp3-to-midi` で MIDI にしたもの（うごてんが作る）。`compose` が設計図の `baseSong` で1曲を選び、ほかの項目で編集する。
 
 **ここに書いた決まりは、MIDI を編集する側（たいが）からの提案です。** 原曲を作るうごてんが決めます。作ってみて変えたいところがあれば、うごてんがこの節を直して PR で提案してください（編集のコードもそれに合わせます）。
 
 - ファイル：`public/songs/song1.mid`〜`song4.mid`
 - 拍子：4/4。曲の頭（0拍目）から小節を始める（弱起にしない）
-- 長さ：24小節（イントロ2 + 1問2小節 × 10 + アウトロ2）
+- 長さ：48小節（`compose` が、テンポに合わせて頭から必要な小節だけ使う。160 BPM で40小節前後）
 - トラック名：`melody`・`pad`・`bass`・`drums` のどれか（トラック名で見分けて編集する）
+  - 追加のトラック `keys`・`guitar`・`synth`・`sing` があってもよい（MP3 から細かく分けたパート。アレンジに使うため）。今の `midiToScore` は使わずに警告を出すだけ。名前は `src/music/parts.js` の見分け方に当たらないものにする
 - ドラム：チャンネル10。キック 36・スネア 38・クローズド・ハイハット 42（General MIDI）
+  - オープン・ハイハット 46・クラッシュ 49・タム 45 / 48 もあってよい（46 は今もハイハットとして鳴る。45・48・49 は今は鳴らない）
 - キー：曲の頭にテキストのメタイベント `key: D dorian` の形で書く（主音はシャープだけ）。なければ音から推定するが、関係調と取り違えることがある
 - テンポ：曲の頭にテンポを1つ入れる（途中で変えてもよい。変化は残したまま設計図の `bpm` に合わせる）
 
@@ -201,8 +208,10 @@ Score = {
   bpm: number,        // 曲の最初のテンポ（途中で変わることがある）
   duration: 秒,        // 余韻も含めた長さ
   timbre: number[],    // 設計図のまま
-  sound: { reverbDecay: 秒, reverbWet: 0〜1, padAttack: 秒, padRelease: 秒, padFilterHz: number },  // 設計図の breathiness から（soundFromBlueprint）
-  structure: [{ name: "intro" | "q1" … "q10" | "outro", start: 秒, end: 秒 }],
+  sound: { reverbDecay: 秒, reverbWet: 0〜1, padAttack: 秒, padRelease: 秒, padFilterHz: number,
+           melodyAttack: 秒, melodyRelease: 秒 },  // 設計図の breathiness から（soundFromBlueprint）
+  structure: [{ name: "intro" | "q1" … "q10" | "outro", start: 秒, end: 秒 }],  // 区間の長さは曲ごとに変わる（planLayout）
+  fade?: { start: 秒, end: 秒 },  // この間に音楽を 0 まで下げる（アウトロ）。声はフェードしない。なければフェードなし
   tracks: {
     voice:  [{ time, duration?, detune? }],   // duration がなければ最後まで（最大 10 秒）、detune がなければ元の高さ
     pad:    [{ time, notes: ["D4", "F4", "A4"], duration, velocity }],
@@ -226,7 +235,7 @@ assets = { voice: AudioBuffer | null }
 
 ## 8. 出力（WAV・映像）
 
-- `renderSong(score, assets)` → WAV の `Blob`（`audio/wav`、44.1kHz・16bit・ステレオ）。一番大きい音が −1 dB になるように曲全体の音量をそろえる（音割れを防ぐ）。書き出す長さは `duration`。最後まで流す声がそれより長く続くときは、声の終わりまで伸ばす（アウトロの声が途中で切れないように）。
+- `renderSong(score, assets)` → WAV の `Blob`（`audio/wav`、44.1kHz・16bit・ステレオ）。一番大きい音が −1 dB になるように曲全体の音量をそろえる（音割れを防ぐ）。書き出す長さは `duration`。最後まで流す声がそれより長く続くときは、「声の終わり ＋ 余韻」まで伸ばす（アウトロの声が途中で切れないように）。余韻は 1.5 秒と声のリバーブの長さ（`score.sound.reverbDecay`。息っぽい声では最大 9 秒）の長いほうなので、WAV は約1分より長くなることがある（例：息っぽさ 1・声 3 秒で約76秒）。
 - 保存するファイル名は `rashisa-YYYYMMDD-HHMM.wav`。名前など個人の情報は入れない。
 - 画面ではこの WAV を `<audio>` で流す（聞いた曲＝持ち帰る曲）。
 - `renderSong` の書き出し中（`Tone.Offline`、数秒〜十数秒）は、Tone.js の全体の設定（context）が書き出し用に切り替わる。書き出しが終わるまで、ほかの音を鳴らしたり Tone.js の楽器・エフェクトを作ったりしない（書き出し用の側に作られて聞こえず、曲に混ざることもある）。UI は書き出し中の画面にしておく。
