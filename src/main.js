@@ -6,7 +6,7 @@
 //   曲が作れないとき（compose・renderSong の失敗）は、エラーの画面を出す
 //   声・叩き・答えはブラウザの中だけで使う。サーバーに送るのは設計図だけ（曲名を付けるため）
 //
-// まだつないでいないもの（任意の材料・映像）: 心拍（connectHeart）・顔（captureFace）・映像（drawVisual）
+// まだつないでいないもの（任意の材料・映像）: 心拍（connectHeart）・瞬き（startBlinks、案）・顔（captureFace）・映像（drawVisual）
 import * as Tone from "tone";
 import "./style.css";
 import { recordVoice, VOICE_THEME } from "./input/voice.js";
@@ -295,7 +295,7 @@ function tapScreen() {
 
 function quizScreen(index = 0, answers = []) {
   if (index >= QUESTIONS.length) {
-    materials.quiz = answers; // [{ value: 1〜5, responseMs }]
+    materials.quiz = answers; // [{ value: 1〜5, responseMs, shownAtMs }]
     makingScreen();
     return;
   }
@@ -311,7 +311,8 @@ function quizScreen(index = 0, answers = []) {
           choices.classList.add("locked");
           e.currentTarget.classList.add("picked");
           const responseMs = Math.round(performance.now() - shownAt);
-          later(() => quizScreen(index + 1, [...answers, { value: i + 1, responseMs }]), 380);
+          // shownAtMs は質問を出した時刻（docs/interfaces.md の QuizAnswer。瞬きを問ごとに分けるための案）
+          later(() => quizScreen(index + 1, [...answers, { value: i + 1, responseMs, shownAtMs: shownAt }]), 380);
         },
       }, h("span", { class: "dot" }), label),
     ),
