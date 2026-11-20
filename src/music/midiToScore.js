@@ -12,7 +12,9 @@
 //
 // トラックの割り当て（原曲の決まりは「6. 原曲」）:
 //   melody  名前が melody / lead / vocal のトラック（なければ和音でない一番高いトラック）。同じ時刻に音が重なれば一番高い音
-//   pad     名前が pad / chord / string のトラック。同じ時刻の音をまとめて和音にする
+//   pad     名前が pad / chord / string のトラック。同じ時刻の音をまとめて和音にする（最大 PAD_MAX_NOTES 音）。
+//           同じ和音が続けて鳴り直すところは1つの長い音にまとめる（採譜で細かく刻まれた和音で、消え方の長い音が
+//           積み重なって同時に鳴る数の上限を超え、音が抜けたり書き出しが遅くなったりしないように）
 //   bass    名前が bass のトラック（なければ残りで一番低いトラック）。同じ時刻に音が重なれば一番低い音
 //   kick    ドラムの 35・36 / snare 37〜40 / hat 42・44・46（General MIDI）。それ以外のドラムの音は使わない
 //   voice   曲の構成のイントロとアウトロの頭に、本人の声を1回ずつ置く。duration は付けない（声は最後まで流す。
@@ -30,6 +32,8 @@ export const SECTION_NAMES = ["intro", ...Array.from({ length: 10 }, (_, i) => `
 const FADE_TAIL = 0.5; // 秒。フェードが終わってから曲を終えるまで
 const DRUMS = { kick: [35, 36], snare: [37, 38, 39, 40], hat: [42, 44, 46] };
 const MIN_DURATION = 0.01; // 秒。長さ 0 の音を鳴らさないように
+const PAD_MAX_NOTES = 4; // パッドの和音は最大4音（一番低い音と高い音は残し、間を間引く）
+const PAD_MERGE_GAP = 0.25; // 秒。同じ和音がこの間をあけずに続けて鳴り直すときは、1つの音にまとめる
 
 export function midiToScore(midi, input, layout = DEFAULT_LAYOUT) {
   const bp = normalizeBlueprint(input);
@@ -121,18 +125,40 @@ function mono(track, pick) {
   });
 }
 
-// 和音のトラック: 同じ時刻の音をまとめる（低い順）。長さは一番長い音、強さは平均
+// 和音のトラック: 同じ時刻に始まる音をまとめる（低い順・最大 PAD_MAX_NOTES 音）。長さは一番長い音、強さは平均。
+// まとめる前に、同じ高さの音が前の音の終わりから PAD_MERGE_GAP 秒以内に鳴り直すときは、前の音を伸ばして1つにする
+// （和音が変わっても続く音は鳴らし直さない。パッドらしく音がつながり、同時に鳴る数も減る）
 function chords(track) {
-  return groupByTime(track.notes).map(([time, notes]) => {
-    const sorted = [...notes].sort((a, b) => a.midi - b.midi);
-    const names = [...new Set(sorted.map((n) => n.name))];
+  const merged = [];
+  const lastByPitch = new Map();
+  for (const n of [...track.notes].sort((a, b) => a.time - b.time || a.midi - b.midi)) {
+    const start = Math.max(0, n.time);
+    const end = start + Math.max(MIN_DURATION, n.duration);
+    const last = lastByPitch.get(n.midi);
+    if (last && start - last.end <= PAD_MERGE_GAP) {
+      last.end = Math.max(last.end, end);
+      continue;
+    }
+    const note = { time: start, end, midi: n.midi, name: n.name, velocity: n.velocity };
+    merged.push(note);
+    lastByPitch.set(n.midi, note);
+  }
+  return groupByTime(merged).map(([time, notes]) => {
+    const kept = thinChord([...notes].sort((a, b) => a.midi - b.midi));
     return {
       time,
-      notes: names,
-      duration: t(Math.max(MIN_DURATION, ...notes.map((n) => n.duration))),
-      velocity: round(notes.reduce((s, n) => s + n.velocity, 0) / notes.length),
+      notes: kept.map((n) => n.name),
+      duration: t(Math.max(MIN_DURATION, ...kept.map((n) => n.end - n.time))),
+      velocity: round(kept.reduce((s, n) => s + n.velocity, 0) / kept.length),
     };
   });
+}
+
+// 低い順の音から、最大 PAD_MAX_NOTES 音を選ぶ（一番低い音と高い音は必ず残し、間は等間隔に選ぶ）
+function thinChord(sorted) {
+  if (sorted.length <= PAD_MAX_NOTES) return sorted;
+  const last = sorted.length - 1;
+  return Array.from({ length: PAD_MAX_NOTES }, (_, i) => sorted[Math.round((i * last) / (PAD_MAX_NOTES - 1))]);
 }
 
 // ドラム: 全ドラムトラックをまとめて kick / snare / hat に分ける。同じ時刻は1つ（強さは一番強いもの）
