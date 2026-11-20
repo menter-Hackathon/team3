@@ -29,6 +29,13 @@
       <legend>1. 原曲の MIDI</legend>
       <input type="file" id="midiFile" accept=".mid,.midi,audio/midi" />
       <button id="useSample">仮の原曲を使う（D dorian・24小節・90 BPM）</button>
+      <div>原曲（public/songs）:
+        <button class="song" data-song="1">song1</button>
+        <button class="song" data-song="2">song2</button>
+        <button class="song" data-song="3">song3</button>
+        <button class="song" data-song="4">song4</button>
+        <span class="note">compose と同じく、テンポに合わせて約1分になる小節の数だけ使う（最後のアウトロで音楽だけフェードアウト）</span>
+      </div>
       <div>原曲のキー（分かれば）:
         <select id="songRoot"><option value="">自動（MIDI から読む・推定）</option></select>
         <select id="songScale"></select>

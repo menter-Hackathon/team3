@@ -87,6 +87,10 @@ export async function loadVoice(voiceWav) {
 }
 
 // clarity（澄み具合）は声の高さが取れた所だけの平均なので、実際は 0.5〜1 くらいしか動かない。
+// 話し声の抑揚（pitchVariation＝高さの上下の幅 ÷ 1オクターブ）は真ん中に集まりやすいので、この幅を melodyRange 0〜1 に広げる
+// （人による違いが曲ではっきり出るように。実際の声を録って調整する前提の目安）
+const VARIATION_FLAT = 0.15; // これ以下なら melodyRange 0（抑揚が小さい）
+const VARIATION_WIDE = 0.65; // これ以上なら melodyRange 1（抑揚が大きい）
 // この幅を breathiness 0〜1 に広げる（実際の声を録って調整する前提の目安）
 const CLARITY_CLEAR = 0.95; // これ以上はっきりしていれば breathiness 0
 const CLARITY_BREATHY = 0.55; // これ以下なら breathiness 1
@@ -96,7 +100,7 @@ export function voiceToBlueprint(features) {
   const root = typeof features?.pitchNote === "string" ? features.pitchNote.replace(/-?\d+$/, "") : null;
   const out = NOTES.includes(root) ? { root, rootFromVoice: true } : { rootFromVoice: false };
   if (!features) return out;
-  if (isNum(features.pitchVariation)) out.melodyRange = round(clamp(features.pitchVariation, 0, 1));
+  if (isNum(features.pitchVariation)) out.melodyRange = round(clamp((features.pitchVariation - VARIATION_FLAT) / (VARIATION_WIDE - VARIATION_FLAT), 0, 1));
   if (isNum(features.clarity)) out.breathiness = round(clamp((CLARITY_CLEAR - features.clarity) / (CLARITY_CLEAR - CLARITY_BREATHY), 0, 1));
   return out;
 }
