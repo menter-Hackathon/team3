@@ -10,6 +10,9 @@
 //   pad      名前に pad / chord / string（なければ null）。メロディとパッドが同じトラックになるときはメロディなし
 //   drums    ドラムのトラック
 
+// General MIDI のドラムの音の番号。楽譜（midiToScore）と MIDI の編集（blueprintEdit）が同じ分け方を使う
+export const DRUM_NOTES = { kick: [35, 36], snare: [37, 38, 39, 40], hat: [42, 44, 46] };
+
 export function isDrum(track) {
   return track.instrument.percussion || track.channel === 9 || /drum|perc/i.test(track.name);
 }

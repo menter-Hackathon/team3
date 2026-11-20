@@ -26,13 +26,12 @@
 // 長さ（duration）: アウトロの終わり + FADE_TAIL 秒（声が長ければ renderSong が声の終わりまで伸ばす）
 import { normalizeBlueprint } from "../blueprint.js";
 import { round } from "../util.js";
-import { findParts, avgPitch } from "./parts.js";
+import { findParts, avgPitch, DRUM_NOTES as DRUMS } from "./parts.js";
 import { soundFromBlueprint } from "./soundSettings.js";
 import { DEFAULT_LAYOUT } from "./edit/layout.js";
 
 export const SECTION_NAMES = ["intro", ...Array.from({ length: 10 }, (_, i) => `q${i + 1}`), "outro"];
 const FADE_TAIL = 0.5; // 秒。フェードが終わってから曲を終えるまで
-const DRUMS = { kick: [35, 36], snare: [37, 38, 39, 40], hat: [42, 44, 46] };
 const MIN_DURATION = 0.01; // 秒。長さ 0 の音を鳴らさないように
 const EXTRA_TRACKS = /^(keys|guitar|synth|sing)$/i; // 原曲にあってよい追加のトラック（今は鳴らさない）
 const PAD_MAX_NOTES = 4; // パッドの和音は最大4音（一番低い音と高い音は残し、間を間引く）

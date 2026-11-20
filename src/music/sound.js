@@ -50,13 +50,14 @@ export async function scheduleSong(score, assets = { voice: null }) {
     music.gain.setValueAtTime(0, score.fade.end);
   }
 
-  // メロディ: 設計図の倍音（顔の輪郭など）をそのまま音色にする。明るさは区間ごとにローパスで変える
-  const melodyFilter = new Tone.Filter(MELODY_FILTER_HZ, "lowpass").connect(reverb);
+  // メロディ: 設計図の倍音（顔の輪郭など）をそのまま音色にする。区間（10問）があるときだけ、明るさをローパスで変える
+  const hasSections = Array.isArray(score.sections) && score.sections.length > 0;
+  const melodyFilter = hasSections ? new Tone.Filter(MELODY_FILTER_HZ, "lowpass").connect(reverb) : null;
   const melody = new Tone.PolySynth(Tone.Synth, {
     oscillator: { type: "custom", partials: timbre },
     envelope: { attack: sound.melodyAttack ?? 0.01, decay: 0.2, sustain: 0.6, release: sound.melodyRelease ?? 0.4 },
     volume: VOLUME.melody,
-  }).connect(melodyFilter);
+  }).connect(melodyFilter ?? reverb);
   melody.maxPolyphony = MAX_POLYPHONY;
 
   // パッド: 息っぽい声ほど、ゆっくり立ち上がり、長く残り、こもった音にする
@@ -68,8 +69,10 @@ export async function scheduleSong(score, assets = { voice: null }) {
   }).connect(padFilter);
   pad.maxPolyphony = MAX_POLYPHONY;
 
-  scheduleBrightness(melodyFilter.frequency, MELODY_FILTER_HZ, score.sections);
-  scheduleBrightness(padFilter.frequency, sound.padFilterHz, score.sections);
+  if (hasSections) {
+    scheduleBrightness(melodyFilter.frequency, MELODY_FILTER_HZ, score.sections);
+    scheduleBrightness(padFilter.frequency, sound.padFilterHz, score.sections);
+  }
 
   const bass = new Tone.MonoSynth({
     oscillator: { type: "triangle" },
@@ -126,10 +129,13 @@ function scheduleBrightness(param, baseHz, sections = []) {
   if (!sections?.length) return;
   const hz = (factor) => Math.min(18000, Math.max(100, baseHz * factor));
   const steps = [];
-  for (const s of [...sections].sort((a, b) => a.start - b.start)) {
+  const sorted = [...sections].sort((a, b) => a.start - b.start);
+  sorted.forEach((s, i) => {
     steps.push({ time: s.start, factor: brightnessFactor(s.brightness) });
-    steps.push({ time: s.end, factor: 1 });
-  }
+    // 次の区間がすぐ続くときは 1 倍に戻さない（戻すと、次の区間の値へ一気に飛ぶため）
+    const next = sorted[i + 1];
+    if (!next || next.start - s.end > 1e-6) steps.push({ time: s.end, factor: 1 });
+  });
   const current = steps.filter((x) => x.time <= 0).at(-1);
   param.setValueAtTime(hz(current?.factor ?? 1), 0);
   let last = current?.factor ?? 1;

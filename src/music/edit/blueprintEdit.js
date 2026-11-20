@@ -18,8 +18,9 @@
 //     6. テンポの変化   tempoDrift   1小節ごとに少しずつ、最後に「tempoDrift の変化 × 2.5」倍になるように変える（±10% → ±25%。taps があるときだけ）
 //   10問（続き。sources.quiz があるとき）
 //     4b. 音の多さ      density      0.5 で原曲のまま。低いとメロディ・キック・スネアの弱い位置の音を間引き、高いとスネアの小さな音を足す
-//     4c. 区間の盛り上がり sections.energy  1問ごとの区間で音の強さを変える（0.65〜1.15 倍）。低い区間ではハイハットとスネアを抜く
-//     4d. 区間の迷い    sections.hesitation  迷った問の区間は、頭のメロディを休む（半拍か1拍）
+//     4c. 区間の盛り上がり sections.energy  1問ごとの区間で音の強さを変える（0 → 0.65 倍・0.5 → そのまま・1 → 1 までの残りの半分を足す）。
+//                     低い区間ではハイハットを抜く
+//     4d. 区間の迷い    sections.hesitation  迷った問の区間は、頭のメロディを休む（半拍か1拍。長い音は頭を遅らせて残す）
 //     （区間の明るさ sections.brightness は音の側で効かせる：midiToScore → score.sections → sound.js のフィルター）
 //   5・6 の数字は tempoPlan() で決める（曲の長さを決める layout.js の planLayout も同じ数字を使う）
 //   叩く（続き）
@@ -35,9 +36,9 @@
 //   bars      曲の小節の数（省略可。compose は planLayout の totalBars を渡す）。省くと layout の totalBars、それもなければ最後の音から数える
 //   layout    曲の構成の小節の数（省略可。planLayout の戻り値）。1問ごとの区間（4c・4d）の位置に使う。省くと DEFAULT_LAYOUT
 //   report    何をしたか（画面表示・確認用）
-import { NOTES, SCALES, normalizeBlueprint } from "../../blueprint.js";
+import { NOTES, SCALES, SECTION_COUNT, normalizeBlueprint } from "../../blueprint.js";
 import { clamp, median, round, seededRandom, hashString } from "../../util.js";
-import { findParts, isDrum } from "../parts.js";
+import { findParts, isDrum, DRUM_NOTES } from "../parts.js";
 import { soundFromBlueprint } from "../soundSettings.js";
 import { DEFAULT_LAYOUT } from "./layout.js";
 
@@ -57,11 +58,10 @@ const DENSITY_THIN_MAX = 0.6; // density 0 のとき、弱い位置の音を間�
 const DENSITY_ADD_MAX = 0.35; // density 1 のとき、空いている16分音符の位置にスネアの小さな音を足す割合
 const GHOST_SNARE = 38;
 const GHOST_VELOCITY = 0.25;
-const KICKS_SNARES = [35, 36, 37, 38, 39, 40];
-const HATS = [42, 44, 46];
-const ENERGY_VELOCITY_MIN = 0.65; // energy 0 のときの音の強さの倍率
-const ENERGY_VELOCITY_MAX = 1.15; // energy 1 のとき
-const ENERGY_SPARSE = 0.4; // これ未満の区間はハイハットとスネアを抜く（静かな区間）
+const KICKS_SNARES = [...DRUM_NOTES.kick, ...DRUM_NOTES.snare];
+const ENERGY_VELOCITY_MIN = 0.65; // energy 0 のときの音の強さの倍率（0.5 で 1 倍）
+const ENERGY_BOOST_MAX = 0.5; // energy 1 のとき、音の強さを 1 までの残りの半分だけ上げる（大きい音も小さい音も強くなる）
+const ENERGY_SPARSE = 0.4; // これ未満の区間はハイハットを抜く（静かな区間。スネアは残して拍は保つ）
 
 export function editMidiByBlueprint(source, input, songKey = null, { bars: barsOption = null, layout = null } = {}) {
   const bp = normalizeBlueprint(input);
@@ -301,9 +301,15 @@ function applyDensity(midi, parts, bp, is44) {
   return { removed, added };
 }
 
+// 区間の盛り上がり → 音の強さ。0〜0.5 は 0.65〜1 倍、0.5〜1 は「1 までの残り」の 0〜半分を足す（もとから大きい音も強くなるように）
+export function energyVelocity(velocity, energy) {
+  const v = energy < 0.5 ? velocity * (ENERGY_VELOCITY_MIN + (1 - ENERGY_VELOCITY_MIN) * energy * 2) : velocity + (1 - velocity) * ENERGY_BOOST_MAX * (energy - 0.5) * 2;
+  return clamp(v, 0.05, 1);
+}
+
 // 1問ごとの区間の位置（ticks）[{ q, from, to }]
 function sectionRanges(layout, barTicks) {
-  return Array.from({ length: 10 }, (_, i) => {
+  return Array.from({ length: SECTION_COUNT }, (_, i) => {
     const from = (layout.introBars + i * layout.barsPerQuestion) * barTicks;
     return { q: i + 1, from, to: from + layout.barsPerQuestion * barTicks };
   });
@@ -318,17 +324,25 @@ function applySections(midi, parts, bp, ranges) {
     const sec = bp.sections[range.q - 1];
     if (!sec) continue;
     const inside = (n) => n.ticks >= range.from && n.ticks < range.to;
-    const factor = ENERGY_VELOCITY_MIN + (ENERGY_VELOCITY_MAX - ENERGY_VELOCITY_MIN) * sec.energy;
-    for (const track of midi.tracks) for (const n of track.notes) if (inside(n)) n.velocity = clamp(n.velocity * factor, 0.05, 1);
+    for (const track of midi.tracks) for (const n of track.notes) if (inside(n)) n.velocity = energyVelocity(n.velocity, sec.energy);
     if (sec.energy < ENERGY_SPARSE) {
-      for (const track of parts.drums) track.notes = track.notes.filter((n) => !(inside(n) && (HATS.includes(n.midi) || [37, 38, 39, 40].includes(n.midi))));
+      for (const track of parts.drums) track.notes = track.notes.filter((n) => !(inside(n) && DRUM_NOTES.hat.includes(n.midi)));
       quiet.push(range.q);
     }
     // 迷い: 0.25 未満は休まない・0.75 未満は半拍・それ以上は1拍
     const beats = sec.hesitation < 0.25 ? 0 : sec.hesitation < 0.75 ? 0.5 : 1;
     if (beats && parts.melody) {
       const gapEnd = range.from + beats * ppq;
-      parts.melody.notes = parts.melody.notes.filter((n) => !(n.ticks >= range.from && n.ticks < gapEnd));
+      // 休みの中で始まる音: 休みのあとまで続く音は頭を休みの終わりまで遅らせて残し、休みの中で終わる音は消す
+      parts.melody.notes = parts.melody.notes.flatMap((n) => {
+        if (n.ticks < range.from || n.ticks >= gapEnd) return [n];
+        const end = n.ticks + n.durationTicks;
+        if (end <= gapEnd) return [];
+        n.durationTicks = end - gapEnd;
+        n.ticks = gapEnd;
+        return [n];
+      });
+      parts.melody.notes.sort((a, b) => a.ticks - b.ticks);
       pauses.push({ q: range.q, beats });
     }
   }
