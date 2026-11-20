@@ -5,7 +5,8 @@ import { clamp } from "./util.js";
 
 export const BLUEPRINT_VERSION = 1;
 export const SECTION_COUNT = 10;
-export const SOURCE_NAMES = ["voice", "taps", "quiz", "heart", "face"]; // 材料の名前（sources のキー）
+const MAX_BLINKS = 60; // 設計図に入れる瞬きの数の上限（1分の曲に鳴らしすぎないように）
+export const SOURCE_NAMES = ["voice", "taps", "quiz", "heart", "face", "blinks"]; // 材料の名前（sources のキー）
 export const NOTES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 
 // 音階。暗い → 明るい の順に並べてある
@@ -39,6 +40,7 @@ export function defaultBlueprint() {
       brightness: 0.5,
       hesitation: 0,
     })),
+    blinks: [], // 瞬きした位置 [{ q: 1〜10, at: その問の中の位置 0〜1 }]。曲ではその問の区間の同じ位置に小さな鐘を鳴らす
     sources: Object.fromEntries(SOURCE_NAMES.map((name) => [name, false])),
   };
 }
@@ -73,6 +75,10 @@ export function normalizeBlueprint(input = {}) {
       brightness: num(sections[i]?.brightness, 0.5, 0, 1),
       hesitation: num(sections[i]?.hesitation, 0, 0, 1),
     })),
+    blinks: (Array.isArray(input.blinks) ? input.blinks : [])
+      .filter((b) => Number.isInteger(b?.q) && b.q >= 1 && b.q <= SECTION_COUNT && Number.isFinite(b?.at))
+      .slice(0, MAX_BLINKS)
+      .map((b) => ({ q: b.q, at: num(b.at, 0, 0, 1) })),
     sources: Object.fromEntries(SOURCE_NAMES.map((name) => [name, Boolean(input.sources?.[name])])),
   };
 }

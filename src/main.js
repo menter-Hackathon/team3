@@ -6,10 +6,13 @@
 //   曲が作れないとき（compose・renderSong の失敗）は、エラーの画面を出す
 //   声・叩き・答えはブラウザの中だけで使う。サーバーに送るのは設計図だけ（曲名を付けるため）
 //
-// まだつないでいないもの（任意の材料・映像）: 心拍（connectHeart）・瞬き（startBlinks、案）・顔（captureFace）・映像（drawVisual）
+// 任意の材料: 心拍は URL に ?heart（中継につなぐ。connectHeart）、瞬きは ?blink（10問のあいだカメラで数える。startBlinks）を付けたときだけ使う
+// まだつないでいないもの: 顔（captureFace）・映像（drawVisual）
 import * as Tone from "tone";
 import "./style.css";
 import { recordVoice, VOICE_THEME } from "./input/voice.js";
+import { connectHeart } from "./sensor/heart.js";
+import { startBlinks } from "./sensor/blink.js";
 import { measureTapIntervals } from "./input/tap.js";
 import { QUESTIONS, CHOICES } from "./input/quiz.js";
 import { toBlueprint } from "./input/toBlueprint.js";
@@ -32,7 +35,39 @@ let materials = emptyMaterials();
 let cleanups = [];
 
 function emptyMaterials() {
-  return { voiceWav: null, tapIntervalsMs: null, quiz: null, heart: null, face: null };
+  return { voiceWav: null, tapIntervalsMs: null, quiz: null, heart: null, face: null, blinks: null };
+}
+
+// 心拍（?heart のときだけ。つながったまま。値は曲をつくる時点のものを使う）
+let heartConnection = null;
+// 瞬き（?blink のときだけ。10問のあいだだけカメラを使う）
+const useBlinks = new URLSearchParams(location.search).has("blink");
+let blinkSession = null; // { promise, tracker, abandoned }
+
+function startBlinkSession() {
+  if (!useBlinks || blinkSession) return;
+  const session = { tracker: null, abandoned: false };
+  session.promise = startBlinks()
+    .then((tracker) => {
+      if (session.abandoned) tracker?.stop(); // 10問が先に終わっていたら、すぐ止める
+      else session.tracker = tracker;
+    })
+    .catch((error) => console.warn("瞬きを始められませんでした（瞬きなしで進めます）", error)); // startBlinks は null を返す作りだが念のため
+  blinkSession = session;
+}
+
+// 10問が終わったら、そのあいだの瞬きをまとめてカメラを止める（まだ準備中なら使わない）
+function finishBlinkSession(answers) {
+  const session = blinkSession;
+  blinkSession = null;
+  if (!session) return null;
+  session.abandoned = true;
+  const tracker = session.tracker;
+  if (!tracker) return null;
+  const first = answers[0], last = answers[answers.length - 1];
+  const blinks = first && last ? tracker.summarize(first.shownAtMs, last.shownAtMs + last.responseMs) : null;
+  tracker.stop();
+  return blinks;
 }
 
 // ── 小さな部品 ───────────────────────────────
@@ -92,6 +127,7 @@ const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 // ── はじまり ─────────────────────────────────
 
 function startScreen() {
+  finishBlinkSession([]); // 途中でやめたときもカメラを止める
   materials = emptyMaterials();
   show(
     svg(
@@ -107,6 +143,7 @@ function startScreen() {
       class: "btn",
       onclick: async () => {
         await Tone.start(); // 音はクリックのあとでないと鳴らせないので、最初のボタンで始める
+        heartConnection ??= connectHeart(); // ?heart がなければ null
         voiceScreen();
       },
     }, "はじめる"),
@@ -296,9 +333,11 @@ function tapScreen() {
 function quizScreen(index = 0, answers = []) {
   if (index >= QUESTIONS.length) {
     materials.quiz = answers; // [{ value: 1〜5, responseMs, shownAtMs }]
+    materials.blinks = finishBlinkSession(answers);
     makingScreen();
     return;
   }
+  if (index === 0) startBlinkSession();
   const shownAt = performance.now();
   let answered = false;
   const choices = h("div", { class: "choices" },
@@ -353,6 +392,7 @@ async function makingScreen() {
 
   const startedAt = performance.now();
   try {
+    materials.heart = heartConnection?.bpm != null ? { bpm: heartConnection.bpm } : null;
     const { blueprint, assets } = await toBlueprint(materials);
     const s = blueprint.sources;
     light(0, s.voice ? "声の高さから、調を選びました" : "声なしで、原曲の調のまま進めます");

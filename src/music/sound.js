@@ -16,12 +16,12 @@ import * as Tone from "tone";
 import { defaultBlueprint } from "../blueprint.js";
 import { soundFromBlueprint } from "./soundSettings.js";
 
-const KNOWN_TRACKS = ["voice", "pad", "bass", "melody", "kick", "snare", "hat"];
+const KNOWN_TRACKS = ["voice", "pad", "bass", "melody", "kick", "snare", "hat", "blink"];
 const DEFAULT_SOUND = soundFromBlueprint(defaultBlueprint()); // 楽譜に sound がないとき
 const DEFAULT_TIMBRE = defaultBlueprint().timbre;
 
 // 音量（dB）。楽器ごとのバランス
-const VOLUME = { melody: -9, pad: -17, bass: -8, kick: -4, snare: -14, hat: -26, voice: 0 };
+const VOLUME = { melody: -9, pad: -17, bass: -8, kick: -4, snare: -14, hat: -26, blink: -16, voice: 0 };
 const MAX_POLYPHONY = 64; // 同時に鳴らせる音の数（既定の 32 だと、消え方の長いパッドで音が抜けることがある）
 const FADE_FLOOR = 0.0001; // フェードの終わりの音量（指数カーブは 0 にできないので、ここまで下げてから 0 にする）
 export const MAX_VOICE_SEC = 10; // 声を流す最大の長さ（秒）。長すぎる録音が曲の中ずっと鳴らないように
@@ -83,6 +83,17 @@ export async function scheduleSong(score, assets = { voice: null }) {
   for (const e of tracks.kick ?? []) kick.triggerAttackRelease("C1", 0.3, e.time, e.velocity);
   for (const e of tracks.snare ?? []) snare.triggerAttackRelease(0.15, e.time, e.velocity);
   for (const e of tracks.hat ?? []) hat.triggerAttackRelease(0.04, e.time, e.velocity);
+  // 瞬き：その人が瞬きした位置に、小さな鐘（FM の金属的な音）。リバーブに通して曲になじませる
+  if (tracks.blink?.length) {
+    const bell = new Tone.PolySynth(Tone.FMSynth, {
+      harmonicity: 3.01,
+      modulationIndex: 10,
+      envelope: { attack: 0.001, decay: 0.6, sustain: 0, release: 0.8 },
+      modulationEnvelope: { attack: 0.001, decay: 0.3, sustain: 0, release: 0.3 },
+      volume: VOLUME.blink,
+    }).connect(reverb);
+    for (const e of tracks.blink) bell.triggerAttackRelease(e.note, 0.3, e.time, e.velocity);
+  }
 
   // 声: イントロとアウトロで本人の声をそのまま流す（duration がなければ最後まで。ただし MAX_VOICE_SEC 秒まで）
   if (assets?.voice) {

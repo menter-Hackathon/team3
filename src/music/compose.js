@@ -10,7 +10,8 @@
 //   loadMidi(baseSong) → Promise<Midi>  原曲の読み方を差し替える（Node での確認用）。省くとブラウザで fetch する
 //   同じ設計図からは同じ曲になる（揺らぎは設計図から作った種の乱数）
 // 原曲を選ぶ（質問の答え → baseSong）・scale・density・sections は、まだ使っていない（次の段階）
-import { normalizeBlueprint } from "../blueprint.js";
+import { NOTES, normalizeBlueprint } from "../blueprint.js";
+const NOTE_INDEX = Object.fromEntries(NOTES.map((n, i) => [n, i]));
 import { editMidiByBlueprint, tempoPlan } from "./edit/blueprintEdit.js";
 import { planLayout, trimToBars } from "./edit/layout.js";
 import { midiToScore } from "./midiToScore.js";
@@ -20,7 +21,29 @@ export async function compose(blueprint, { loadMidi = fetchSong } = {}) {
   const source = await loadMidi(bp.baseSong);
   const { midi, layout } = fitLength(source, bp);
   const { midi: edited } = editMidiByBlueprint(midi, bp, null, { bars: layout.totalBars });
-  return midiToScore(edited, bp, layout).score;
+  const score = midiToScore(edited, bp, layout).score;
+  score.tracks.blink = blinkTrack(score, bp.blinks);
+  return score;
+}
+
+// 瞬き → その問の区間の同じ位置に鳴らす小さな鐘。音の高さは、曲で一番よく使われている音（主音に近い）の高い所
+const BLINK_OCTAVE = 6;
+const BLINK_VELOCITY = 0.5;
+export function blinkTrack(score, blinks = []) {
+  if (!blinks.length) return [];
+  const count = new Array(12).fill(0);
+  for (const e of score.tracks.pad ?? []) for (const n of e.notes) count[NOTE_INDEX[n.replace(/-?\d+$/, "")] ?? 0] += 1;
+  for (const e of score.tracks.melody ?? []) count[NOTE_INDEX[e.note.replace(/-?\d+$/, "")] ?? 0] += 1;
+  const note = `${NOTES[count.indexOf(Math.max(...count))]}${BLINK_OCTAVE}`;
+  const times = [];
+  for (const b of blinks) {
+    const sec = score.structure.find((s) => s.name === `q${b.q}`);
+    if (!sec) continue;
+    let ms = Math.round((sec.start + b.at * (sec.end - sec.start)) * 1000); // ミリ秒の整数で比べる（丸めて同じ時刻にならないように）
+    while (times.includes(ms)) ms += 1; // 同じトラックで同じ time を使わない決まり
+    if (ms >= 0 && ms < score.duration * 1000) times.push(ms);
+  }
+  return times.sort((a, b) => a - b).map((ms) => ({ time: ms / 1000, note, velocity: BLINK_VELOCITY }));
 }
 
 // 原曲 → 約1分の長さにした原曲と、その小節の数（dev ページも同じ順で使う）
