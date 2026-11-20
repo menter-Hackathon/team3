@@ -20,6 +20,8 @@
 //   voice   曲の構成のイントロとアウトロの頭に、本人の声を1回ずつ置く。duration は付けない（声は最後まで流す。
 //           速いテンポでも名前などが途中で切れないように）。鳴らすかどうかは assets.voice があるかで決まる
 // 曲の構成（structure）: layout の小節の数で intro → q1〜q10 → outro に区切る（4/4 で数える。テンポの変化も反映した秒）
+// 区間（sections）: 1問ごとの区間の秒と、設計図の sections の値（10問の答えがあるときだけ。なければ []）。
+//           sound.js が brightness でメロディとパッドの明るさを変える（energy・hesitation は MIDI の編集で効かせ済み。映像などでも使える）
 // フェード（fade）: アウトロの頭から終わりまでで、音楽を 0 まで下げる（sound.js）。声はフェードしない
 // 長さ（duration）: アウトロの終わり + FADE_TAIL 秒（声が長ければ renderSong が声の終わりまで伸ばす）
 import { normalizeBlueprint } from "../blueprint.js";
@@ -105,6 +107,7 @@ export function midiToScore(midi, input, layout = DEFAULT_LAYOUT) {
     sound,
     structure,
     fade,
+    sections: scoreSections(structure, bp),
     tracks,
   };
   return {
@@ -196,3 +199,12 @@ function groupByTime(notes) {
 const t = (s) => round(s, 3); // 秒はミリ秒まで
 const maxBy = (list, score) => list.reduce((best, x) => (best === null || score(x) > score(best) ? x : best), null);
 const minBy = (list, score) => list.reduce((best, x) => (best === null || score(x) < score(best) ? x : best), null);
+
+// 1問ごとの区間 [{ q, start, end, energy, brightness, hesitation }]（10問の答えがないときは []）
+function scoreSections(structure, bp) {
+  if (!bp.sources.quiz) return [];
+  return bp.sections.flatMap((sec) => {
+    const part = structure.find((x) => x.name === `q${sec.q}`);
+    return part ? [{ q: sec.q, start: part.start, end: part.end, energy: sec.energy, brightness: sec.brightness, hesitation: sec.hesitation }] : [];
+  });
+}

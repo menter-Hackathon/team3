@@ -11,6 +11,8 @@
 //   melody（score.timbre の倍音）・pad（フィルター）→ リバーブ（score.sound）─┐
 //   bass・kick・snare・hat ─────────────────────────────┴→ フェード → リミッター（音割れ防止）→ 出力
 //   voice → 声用のリバーブ（同じ設定）──────────────────────────────────┘（声はフェードしない）
+//   区間の明るさ: score.sections の brightness で、メロディとパッドのローパスの周波数を区間ごとに 0.5〜2 倍にする（0.5 で変えない）
+//     区間の頭から SECTION_RAMP 秒かけて変える。区間の外（イントロ・アウトロ）は 1 倍。sections の時刻は負でもよい（render.js の部分の前に始まった区間）
 //   フェード: score.fade { start, end } があれば、その間に音楽の音量を 0 まで下げる（アウトロで音楽が消え、本人の声だけが残る）
 //   声の detune（音の高さを変える）はまだ使わない（GrainPlayer で楽器にするのは未定）
 import * as Tone from "tone";
@@ -24,6 +26,8 @@ const DEFAULT_TIMBRE = defaultBlueprint().timbre;
 // 音量（dB）。楽器ごとのバランス
 const VOLUME = { melody: -9, pad: -17, bass: -8, kick: -4, snare: -14, hat: -26, blink: -16, voice: 0 };
 const MAX_POLYPHONY = 64; // 同時に鳴らせる音の数（既定の 32 だと、消え方の長いパッドで音が抜けることがある）
+const MELODY_FILTER_HZ = 6000; // メロディのローパスの基準（区間の明るさで 3000〜12000 Hz）
+const SECTION_RAMP = 0.3; // 秒。区間の明るさを変えるのにかける時間
 const FADE_FLOOR = 0.0001; // フェードの終わりの音量（指数カーブは 0 にできないので、ここまで下げてから 0 にする）
 export const MAX_VOICE_SEC = 10; // 声を流す最大の長さ（秒）。長すぎる録音が曲の中ずっと鳴らないように
 
@@ -46,12 +50,13 @@ export async function scheduleSong(score, assets = { voice: null }) {
     music.gain.setValueAtTime(0, score.fade.end);
   }
 
-  // メロディ: 設計図の倍音（顔の輪郭など）をそのまま音色にする
+  // メロディ: 設計図の倍音（顔の輪郭など）をそのまま音色にする。明るさは区間ごとにローパスで変える
+  const melodyFilter = new Tone.Filter(MELODY_FILTER_HZ, "lowpass").connect(reverb);
   const melody = new Tone.PolySynth(Tone.Synth, {
     oscillator: { type: "custom", partials: timbre },
     envelope: { attack: sound.melodyAttack ?? 0.01, decay: 0.2, sustain: 0.6, release: sound.melodyRelease ?? 0.4 },
     volume: VOLUME.melody,
-  }).connect(reverb);
+  }).connect(melodyFilter);
   melody.maxPolyphony = MAX_POLYPHONY;
 
   // パッド: 息っぽい声ほど、ゆっくり立ち上がり、長く残り、こもった音にする
@@ -62,6 +67,9 @@ export async function scheduleSong(score, assets = { voice: null }) {
     volume: VOLUME.pad,
   }).connect(padFilter);
   pad.maxPolyphony = MAX_POLYPHONY;
+
+  scheduleBrightness(melodyFilter.frequency, MELODY_FILTER_HZ, score.sections);
+  scheduleBrightness(padFilter.frequency, sound.padFilterHz, score.sections);
 
   const bass = new Tone.MonoSynth({
     oscillator: { type: "triangle" },
@@ -106,4 +114,29 @@ export async function scheduleSong(score, assets = { voice: null }) {
   }
 
   await Promise.all([reverb.ready, voiceReverb.ready]); // リバーブの響きを作り終わるまで待つ（待たないと最初の音に響きが付かない）
+}
+
+// 区間の明るさ（0〜1）→ 周波数の倍率（0 → 0.5 倍・0.5 → 1 倍・1 → 2 倍）
+export function brightnessFactor(brightness) {
+  return Math.pow(2, (brightness - 0.5) * 2);
+}
+
+// 区間ごとにフィルターの周波数を変える。時刻 0 より前に始まった区間は、0 の時点の値として入れる
+function scheduleBrightness(param, baseHz, sections = []) {
+  if (!sections?.length) return;
+  const hz = (factor) => Math.min(18000, Math.max(100, baseHz * factor));
+  const steps = [];
+  for (const s of [...sections].sort((a, b) => a.start - b.start)) {
+    steps.push({ time: s.start, factor: brightnessFactor(s.brightness) });
+    steps.push({ time: s.end, factor: 1 });
+  }
+  const current = steps.filter((x) => x.time <= 0).at(-1);
+  param.setValueAtTime(hz(current?.factor ?? 1), 0);
+  let last = current?.factor ?? 1;
+  for (const step of steps.filter((x) => x.time > 0)) {
+    if (step.factor === last) continue;
+    param.setValueAtTime(hz(last), step.time);
+    param.exponentialRampToValueAtTime(hz(step.factor), step.time + SECTION_RAMP);
+    last = step.factor;
+  }
 }

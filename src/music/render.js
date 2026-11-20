@@ -85,6 +85,7 @@ async function renderParts(parts, assets) {
 // 楽譜を PART_SEC 秒ずつの部分に分ける。音は鳴り始める部分に入れ、時刻はその部分の頭からに直す
 // 部分の長さ: 中の音が鳴り終わる時刻 + 余韻（リリース・リバーブ）。曲の終わり（total）を超えない
 // フェードの途中には区切りを置かない（フェードの時刻を部分ごとにずらすだけで、同じ形でかかるように）
+// 区間（sections）の時刻も部分ごとにずらす（部分の前に始まった区間は負の時刻になり、sound.js がその値から始める）
 export function splitScore(score, assets, total = songLength(score, assets)) {
   const sound = score.sound ?? {};
   const reverb = sound.reverbDecay ?? MAX_REVERB_SEC;
@@ -131,7 +132,8 @@ export function splitScore(score, assets, total = songLength(score, assets)) {
     .map((p) => {
       const length = Math.min(p.end, total - p.offset);
       const partFade = fade ? { start: fade.start - p.offset, end: fade.end - p.offset } : score.fade;
-      return { offset: p.offset, length, hasVoice: p.hasVoice, score: { ...score, duration: length, tracks: p.tracks, fade: partFade } };
+      const partSections = (score.sections ?? []).map((s) => ({ ...s, start: s.start - p.offset, end: s.end - p.offset }));
+      return { offset: p.offset, length, hasVoice: p.hasVoice, score: { ...score, duration: length, tracks: p.tracks, fade: partFade, sections: partSections } };
     });
 }
 

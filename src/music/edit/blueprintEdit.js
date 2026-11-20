@@ -4,7 +4,9 @@
 //
 // 編集の順番と、使う設計図の項目:
 //   声（sources.voice があるとき）
-//     1. 移調          root         原曲を、このキーに移調する（rootFromVoice が true のときだけ。音階は原曲のまま。ドラムは移調しない）
+//     1. 移調          root         原曲を、このキーに移調する（rootFromVoice が true のときだけ。ドラムは移調しない）
+//   10問（sources.quiz があるとき）
+//     1b. 音階         scale        原曲の音階を、設計図の音階に置き換える（主音は 1 のまま。「何番目の音か」を保って入れ替える）
 //     2. メロディの音域 melodyRange  真ん中の音からの距離を倍にし（0 → 0.3倍・0.5 → 1倍・1 → 2.2倍の折れ線）、音階の音に寄せる。
 //                     原曲の音域 ± 12 半音・C3〜C7 からはみ出すときは、メロディ全体の倍率を下げて収める
 //     3. 音の柔らかさ   breathiness  リバーブ・パッドの設定を CC として曲の頭に書く（数字は src/music/soundSettings.js の soundFromBlueprint。鳴らす側と同じ）
@@ -14,6 +16,11 @@
 //   テンポ（sources.taps か sources.heart があるとき）
 //     5. テンポ        bpm          原曲のテンポの変化は残したまま、全体を「bpm ÷ 原曲の最初の bpm」倍にする
 //     6. テンポの変化   tempoDrift   1小節ごとに少しずつ、最後に「tempoDrift の変化 × 2.5」倍になるように変える（±10% → ±25%。taps があるときだけ）
+//   10問（続き。sources.quiz があるとき）
+//     4b. 音の多さ      density      0.5 で原曲のまま。低いとメロディ・キック・スネアの弱い位置の音を間引き、高いとスネアの小さな音を足す
+//     4c. 区間の盛り上がり sections.energy  1問ごとの区間で音の強さを変える（0.65〜1.15 倍）。低い区間ではハイハットとスネアを抜く
+//     4d. 区間の迷い    sections.hesitation  迷った問の区間は、頭のメロディを休む（半拍か1拍）
+//     （区間の明るさ sections.brightness は音の側で効かせる：midiToScore → score.sections → sound.js のフィルター）
 //   5・6 の数字は tempoPlan() で決める（曲の長さを決める layout.js の planLayout も同じ数字を使う）
 //   叩く（続き）
 //     7. ノリ・揺らぎ   groove・stability  拍の位置に合わせて時刻を groove の 2 倍ずらし（1拍の 1/4 まで）、
@@ -25,12 +32,14 @@
 //   midi      @tonejs/midi の Midi。元の midi は書き換えず、編集したコピーを返す
 //   blueprint 設計図。中で normalizeBlueprint() を通す
 //   songKey   { root: "D", scale: "dorian" }（原曲のキー）。省くと MIDI の "key: D dorian" テキスト → 調号 → 音の分布から推定
-//   bars      曲の小節の数（省略可。compose は planLayout の totalBars を渡す）。省くと最後の音から数える
+//   bars      曲の小節の数（省略可。compose は planLayout の totalBars を渡す）。省くと layout の totalBars、それもなければ最後の音から数える
+//   layout    曲の構成の小節の数（省略可。planLayout の戻り値）。1問ごとの区間（4c・4d）の位置に使う。省くと DEFAULT_LAYOUT
 //   report    何をしたか（画面表示・確認用）
 import { NOTES, SCALES, normalizeBlueprint } from "../../blueprint.js";
 import { clamp, median, round, seededRandom, hashString } from "../../util.js";
 import { findParts, isDrum } from "../parts.js";
 import { soundFromBlueprint } from "../soundSettings.js";
+import { DEFAULT_LAYOUT } from "./layout.js";
 
 const RANGE_MIN_FACTOR = 0.3; // melodyRange 0 のときのメロディの音域の倍率（抑揚の小さい声 → ほとんど平らなメロディ）
 const RANGE_MAX_FACTOR = 2.2; // melodyRange 1 のとき（抑揚の大きい声 → 上下に大きく動くメロディ）
@@ -44,14 +53,25 @@ const GROOVE_GAIN = 2; // 叩いたズレ（groove）を何倍にして曲に入
 const GROOVE_MAX_BEATS = 0.25; // ノリのズレは 1拍の 1/4 まで（16分音符ぶん以上ずれると、リズムが別物になるため）
 const DRIFT_GAIN = 2.5; // テンポの変化（tempoDrift）を何倍にするか（設計図の ±10% → 曲では ±25%）
 const SOUND_CC = { reverb: 91, attack: 73, release: 72, brightness: 74 };
+const DENSITY_THIN_MAX = 0.6; // density 0 のとき、弱い位置の音を間引く割合
+const DENSITY_ADD_MAX = 0.35; // density 1 のとき、空いている16分音符の位置にスネアの小さな音を足す割合
+const GHOST_SNARE = 38;
+const GHOST_VELOCITY = 0.25;
+const KICKS_SNARES = [35, 36, 37, 38, 39, 40];
+const HATS = [42, 44, 46];
+const ENERGY_VELOCITY_MIN = 0.65; // energy 0 のときの音の強さの倍率
+const ENERGY_VELOCITY_MAX = 1.15; // energy 1 のとき
+const ENERGY_SPARSE = 0.4; // これ未満の区間はハイハットとスネアを抜く（静かな区間）
 
-export function editMidiByBlueprint(source, input, songKey = null, { bars: songBars = null } = {}) {
+export function editMidiByBlueprint(source, input, songKey = null, { bars: barsOption = null, layout = null } = {}) {
   const bp = normalizeBlueprint(input);
   const midi = source.clone(); // 元を書き換えないようにコピー
   const parts = findParts(midi);
   const warnings = [];
   const useVoice = bp.sources.voice;
   const useTaps = bp.sources.taps;
+  const useQuiz = bp.sources.quiz;
+  const songBars = barsOption ?? layout?.totalBars ?? null;
   const ppq = midi.header.ppq;
   const barTicks = ppq * 4;
   const is44 = isFourFour(midi);
@@ -69,6 +89,21 @@ export function editMidiByBlueprint(source, input, songKey = null, { bars: songB
     for (const track of parts.pitched) for (const note of track.notes) note.midi = clamp(note.midi + shift, 0, 127);
   }
   const newRoot = NOTES[(NOTES.indexOf(key.root) + shift + 12) % 12];
+
+  // 1b. 音階: 原曲の音階の「何番目の音か」を保ったまま、設計図の音階の同じ番目の音にする（和音の流れが崩れにくい）。
+  //     音階にない音（経過音など）は、すぐ下の音階の音と同じだけ動かす。ドラムは変えない
+  const newScale = useQuiz && bp.scale in SCALES ? bp.scale : key.scale;
+  let scaleNotes = 0;
+  if (newScale !== key.scale && key.scale in SCALES) {
+    const rootPc = NOTES.indexOf(newRoot);
+    for (const track of parts.pitched) {
+      for (const note of track.notes) {
+        const moved = changeMode(note.midi, rootPc, SCALES[key.scale], SCALES[newScale]);
+        if (moved !== note.midi) scaleNotes++;
+        note.midi = moved;
+      }
+    }
+  }
 
   // 2. メロディの音域: 真ん中の音からの距離を倍にし、原曲の音域 ± RANGE_MARGIN の中で音階の音に寄せる。
   //    範囲からはみ出すときは、1音ずつ端に押し込まず、メロディ全体の倍率を下げてちょうど収める（端に音が固まらないように）
@@ -91,7 +126,7 @@ export function editMidiByBlueprint(source, input, songKey = null, { bars: songB
       }
       for (const note of parts.melody.notes) {
         const stretched = clamp(Math.round(center + (note.midi - center) * rangeFactor), lo, hi);
-        note.midi = snapToScale(stretched, newRoot, key.scale, lo, hi);
+        note.midi = snapToScale(stretched, newRoot, newScale, lo, hi);
       }
     }
     melodySpan = { before, after: span(parts.melody.notes) };
@@ -136,6 +171,14 @@ export function editMidiByBlueprint(source, input, songKey = null, { bars: songB
       hats = { division: hatDiv, before: old.length, after: hatTrack.notes.filter((n) => n.midi === CLOSED_HAT).length };
     }
   }
+
+  // 4b. 音の多さ（10問）
+  let density = null;
+  if (useQuiz && bp.density !== 0.5) density = applyDensity(midi, parts, bp, is44);
+
+  // 4c・4d. 1問ごとの区間（10問）: 盛り上がり（音の強さ・楽器の数）と迷い（頭のメロディを休む）
+  let sectionReport = null;
+  if (useQuiz) sectionReport = applySections(midi, parts, bp, sectionRanges(layout ?? DEFAULT_LAYOUT, barTicks));
 
   // 5・6. テンポとテンポの変化: 原曲のテンポの点はそのまま残し、全体の倍率と小節ごとの変化を掛ける
   const original = midi.header.tempos.length ? midi.header.tempos.map((t) => ({ ticks: t.ticks, bpm: t.bpm })) : [{ ticks: 0, bpm: 120 }];
@@ -183,14 +226,17 @@ export function editMidiByBlueprint(source, input, songKey = null, { bars: songB
   // 調号は長調・短調しか表せず、移調後は古くなるので消し、"key: G# dorian" というテキストで残す
   midi.header.keySignatures = [];
   midi.header.meta = midi.header.meta.filter((m) => !(m.type === "text" && KEY_TEXT.test(m.text)));
-  midi.header.meta.push({ type: "text", text: `key: ${newRoot} ${key.scale}`, ticks: 0 });
+  midi.header.meta.push({ type: "text", text: `key: ${newRoot} ${newScale}`, ticks: 0 });
 
   return {
     midi,
     report: {
       songKey: `${key.root} ${key.scale}${key.estimated ? "（推定）" : ""}`,
-      newKey: `${newRoot} ${key.scale}`,
+      newKey: `${newRoot} ${newScale}`,
       shift,
+      scale: newScale !== key.scale ? { from: key.scale, to: newScale, notes: scaleNotes } : null,
+      density,
+      sections: sectionReport,
       melodyTrack: parts.melody?.name || null,
       rangeFactor,
       melodySpan,
@@ -206,6 +252,87 @@ export function editMidiByBlueprint(source, input, songKey = null, { bars: songB
       warnings,
     },
   };
+}
+
+// ── 10問（音階・音の多さ・区間） ─────────────────────
+
+// 音階を入れ替える（1b）。rootPc は主音（0〜11）、from・to は SCALES の音程の並び
+export function changeMode(midiNote, rootPc, from, to) {
+  const rel = (((midiNote - rootPc) % 12) + 12) % 12;
+  let d = 0;
+  while (d + 1 < from.length && from[d + 1] <= rel) d++;
+  return clamp(midiNote + to[d] - from[d], 0, 127);
+}
+
+// 音の多さ（4b）→ { removed, added }。同じ設計図なら同じ音を間引く・足す（設計図から作った種の乱数）
+function applyDensity(midi, parts, bp, is44) {
+  const ppq = midi.header.ppq;
+  const random = seededRandom(hashString(`${JSON.stringify(bp)}:density`));
+  let removed = 0;
+  let added = 0;
+  if (bp.density < 0.5) {
+    const thin = (0.5 - bp.density) * 2 * DENSITY_THIN_MAX;
+    const weak = (n) => n.ticks % ppq !== 0; // 拍の頭ではない
+    const drop = (track, isTarget) => {
+      const before = track.notes.length;
+      track.notes = track.notes.filter((n) => !(isTarget(n) && weak(n) && random() < thin));
+      removed += before - track.notes.length;
+    };
+    if (parts.melody) drop(parts.melody, (n) => n.durationTicks <= ppq / 2); // 8分音符以下の短い音だけ
+    for (const track of parts.drums) drop(track, (n) => KICKS_SNARES.includes(n.midi));
+  } else if (bp.density > 0.5 && is44) {
+    const add = (bp.density - 0.5) * 2 * DENSITY_ADD_MAX;
+    const track = maxBy(parts.drums, (t) => t.notes.filter((n) => KICKS_SNARES.includes(n.midi)).length);
+    if (track) {
+      const step = ppq / 4;
+      const used = new Set(track.notes.filter((n) => KICKS_SNARES.includes(n.midi)).map((n) => Math.round(n.ticks / step)));
+      const barTicks = ppq * 4;
+      const bars = new Set(track.notes.filter((n) => KICKS_SNARES.includes(n.midi)).map((n) => Math.floor(n.ticks / barTicks)));
+      for (const bar of [...bars].sort((a, b) => a - b)) {
+        for (let i = 0; i < 16; i++) {
+          const slot = bar * 16 + i;
+          if (i % 4 === 0 || used.has(slot) || random() >= add) continue; // 拍の頭と、もう鳴っている所には足さない
+          track.addNote({ midi: GHOST_SNARE, ticks: slot * step, durationTicks: step, velocity: GHOST_VELOCITY });
+          added++;
+        }
+      }
+    }
+  }
+  return { removed, added };
+}
+
+// 1問ごとの区間の位置（ticks）[{ q, from, to }]
+function sectionRanges(layout, barTicks) {
+  return Array.from({ length: 10 }, (_, i) => {
+    const from = (layout.introBars + i * layout.barsPerQuestion) * barTicks;
+    return { q: i + 1, from, to: from + layout.barsPerQuestion * barTicks };
+  });
+}
+
+// 区間の盛り上がり（4c）と迷い（4d）→ { quiet: [問の番号], pauses: [{ q, beats }] }
+function applySections(midi, parts, bp, ranges) {
+  const ppq = midi.header.ppq;
+  const quiet = [];
+  const pauses = [];
+  for (const range of ranges) {
+    const sec = bp.sections[range.q - 1];
+    if (!sec) continue;
+    const inside = (n) => n.ticks >= range.from && n.ticks < range.to;
+    const factor = ENERGY_VELOCITY_MIN + (ENERGY_VELOCITY_MAX - ENERGY_VELOCITY_MIN) * sec.energy;
+    for (const track of midi.tracks) for (const n of track.notes) if (inside(n)) n.velocity = clamp(n.velocity * factor, 0.05, 1);
+    if (sec.energy < ENERGY_SPARSE) {
+      for (const track of parts.drums) track.notes = track.notes.filter((n) => !(inside(n) && (HATS.includes(n.midi) || [37, 38, 39, 40].includes(n.midi))));
+      quiet.push(range.q);
+    }
+    // 迷い: 0.25 未満は休まない・0.75 未満は半拍・それ以上は1拍
+    const beats = sec.hesitation < 0.25 ? 0 : sec.hesitation < 0.75 ? 0.5 : 1;
+    if (beats && parts.melody) {
+      const gapEnd = range.from + beats * ppq;
+      parts.melody.notes = parts.melody.notes.filter((n) => !(n.ticks >= range.from && n.ticks < gapEnd));
+      pauses.push({ q: range.q, beats });
+    }
+  }
+  return { quiet, pauses };
 }
 
 // テンポの決め方（5・6 と、曲の長さの planLayout が同じ数字を使う）→ { originalBpm, ratio, bpm, drift }
