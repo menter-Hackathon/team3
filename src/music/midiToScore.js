@@ -32,6 +32,7 @@ export const SECTION_NAMES = ["intro", ...Array.from({ length: 10 }, (_, i) => `
 const FADE_TAIL = 0.5; // 秒。フェードが終わってから曲を終えるまで
 const DRUMS = { kick: [35, 36], snare: [37, 38, 39, 40], hat: [42, 44, 46] };
 const MIN_DURATION = 0.01; // 秒。長さ 0 の音を鳴らさないように
+const EXTRA_TRACKS = /^(keys|guitar|synth|sing)$/i; // 原曲にあってよい追加のトラック（今は鳴らさない）
 const PAD_MAX_NOTES = 4; // パッドの和音は最大4音（一番低い音と高い音は残し、間を間引く）
 const PAD_MERGE_GAP = 0.25; // 秒。同じ和音がこの間をあけずに続けて鳴り直すときは、1つの音にまとめる
 
@@ -66,8 +67,12 @@ export function midiToScore(midi, input, layout = DEFAULT_LAYOUT) {
   }
   const rest = parts.pitched.filter((tr) => tr !== melody && tr !== parts.pad);
   const bass = rest.find((tr) => /bass/i.test(tr.name)) ?? minBy(rest, avgPitch);
-  const unused = rest.filter((tr) => tr !== bass).map((tr) => tr.name || "（名前なし）");
-  if (unused.length) warnings.push(`使わなかったトラック: ${unused.join("、")}（トラック名を melody / pad / bass / drums にそろえてください）`);
+  // 追加のトラック（keys・guitar・synth・sing。docs/interfaces.md の「6. 原曲」で認めているもの）は、使わないことだけ伝える
+  const unusedTracks = rest.filter((tr) => tr !== bass);
+  const extra = unusedTracks.filter((tr) => EXTRA_TRACKS.test(tr.name)).map((tr) => tr.name);
+  const unknown = unusedTracks.filter((tr) => !EXTRA_TRACKS.test(tr.name)).map((tr) => tr.name || "（名前なし）");
+  if (extra.length) warnings.push(`使わなかった追加のトラック: ${extra.join("、")}（今の楽譜では鳴らしません）`);
+  if (unknown.length) warnings.push(`使わなかったトラック: ${unknown.join("、")}（トラック名を melody / pad / bass / drums にそろえてください）`);
 
   const tracks = {
     voice: [],

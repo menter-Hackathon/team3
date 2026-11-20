@@ -17,7 +17,7 @@
 16,ドラム,音色,なし,,,,固定の音色で実装済み,たいが,sound.js のキック（MembraneSynth）・スネアとハイハット（ノイズ＋ハイパス）
 17,音色・エフェクト,リバーブの深さ,声,clarity（息っぽさ）,breathiness,実装済み,実装済み,たいが,長さ 0.6〜9 秒・量 0.05〜0.65（soundSettings.js）。メロディ・パッド・声にかける。MIDI にも CC91 を書く（PR #11・強めに調整）
 18,音色・エフェクト,楽器の音色（倍音の強さ）,顔の輪郭（任意）,timbre,timbre,実装済み,実装済み,たいが,sound.js でメロディの音色（倍音）にする。顔が取れたときだけ。なければ既定の音色。toBlueprint で face.timbre を設計図に入れる（顔の入力は任意）
-19,区間ごとの変化,盛り上がり（音の強さ・楽器の数）,質問1問ごとの答え,energy,sections,未実装,未実装,うごてん,1問＝2小節 × 10。入力側で答えと回答時間は取れている（quiz.js の scoreQuiz もある）が、toBlueprint はまだ TODO
+19,区間ごとの変化,盛り上がり（音の強さ・楽器の数）,質問1問ごとの答え,energy,sections,未実装,未実装,うごてん,1問ごとの区間（1〜4小節 × 10。テンポで変わる。layout.js の planLayout）。入力側で答えと回答時間は取れている（quiz.js の scoreQuiz もある）が、toBlueprint はまだ TODO
 20,区間ごとの変化,明るさ,質問1問ごとの答え,brightness,sections,未実装,未実装,うごてん,入力側で答えと回答時間は取れている（quiz.js の scoreQuiz もある）が、toBlueprint はまだ TODO
 21,区間ごとの変化,迷い（間・揺らぎ）,質問の回答時間,hesitation,sections,未実装,未実装,うごてん,入力側で答えと回答時間は取れている（quiz.js の scoreQuiz もある）が、toBlueprint はまだ TODO
 22,声そのもの,イントロ・アウトロで本人の声を流す,声,録音（WAV）,（assets.voice）,実装済み,実装済み,たいが,設計図ではなく assets で渡す（toBlueprint が WAV を読み込む）。楽譜（midiToScore）でイントロ・アウトロの頭に置き、sound.js で最後まで流す（最大 10 秒。テンポが速くても切れない）
